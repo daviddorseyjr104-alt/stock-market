@@ -13,7 +13,7 @@ import {
   ArrowRight,
   X,
 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -44,7 +44,7 @@ import type { RiskLabel } from "@/lib/types";
 const CHART_COLORS = ["#39f5ac", "#7c5cff", "#38bdf8", "#fbbf24", "#fb7185", "#34d399", "#c084fc", "#60a5fa"];
 
 export default function SimulatorPage() {
-  const { portfolio, buy, sell, resetPortfolio } = useAppState();
+  const { portfolio, equityHistory, buy, sell, resetPortfolio, recordEquity } = useAppState();
 
   const [selected, setSelected] = useState(tickerCatalog[0].ticker);
   const [selectedName, setSelectedName] = useState<string>(tickerCatalog[0].name);
@@ -107,6 +107,13 @@ export default function SimulatorPage() {
   const biggest = biggestPosition(portfolio.positions, priceOf);
   const rec = learningRecommendation(portfolio.positions, priceOf);
 
+  // Record the account value over time so the chart shows real growth.
+  useEffect(() => {
+    if (!loading && value > 0) recordEquity(value);
+  }, [value, loading, recordEquity]);
+
+  const eqColor = gain.abs >= 0 ? "#39f5ac" : "#fb7185";
+
   const dayChange = portfolio.positions.reduce(
     (s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0),
     0,
@@ -165,32 +172,78 @@ export default function SimulatorPage() {
         money and trades are simulated. No real orders are placed and this is not financial advice.
       </Disclaimer>
 
+      {/* Portfolio value + growth chart (Robinhood-style) */}
+      <Card glow className="p-5">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Portfolio value</p>
+            <p className="font-display text-4xl font-bold tracking-tight text-white">
+              {formatCurrency(value, { maximumFractionDigits: 2 })}
+            </p>
+            <p className={cn("mt-1 text-sm font-semibold", gain.abs >= 0 ? "text-capital-300" : "text-rose-400")}>
+              {gain.abs >= 0 ? "▲" : "▼"} {formatCurrency(Math.abs(gain.abs))} ({formatPercent(gain.pct)})
+              <span className="text-white/40"> all-time</span>
+              <span className="ml-2 font-normal text-white/40">
+                {dayChange >= 0 ? "+" : ""}
+                {formatCurrency(dayChange)} today
+              </span>
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 h-40 sm:h-48">
+          {equityHistory.length >= 2 ? (
+            <ResponsiveContainer>
+              <AreaChart data={equityHistory} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={eqColor} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={eqColor} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="t" hide />
+                <YAxis hide domain={["dataMin", "dataMax"]} />
+                <Tooltip
+                  contentStyle={{ background: "#11141f", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, fontSize: 12 }}
+                  labelFormatter={(t) =>
+                    new Date(t as number).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+                  }
+                  formatter={(v: number) => [formatCurrency(v, { maximumFractionDigits: 2 }), "Value"]}
+                />
+                <Area type="monotone" dataKey="v" stroke={eqColor} strokeWidth={2} fill="url(#eq)" isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 text-center">
+              <p className="text-sm text-white/55">Your growth curve starts now.</p>
+              <p className="mt-1 max-w-xs text-xs text-white/35">
+                It fills in as prices move and you check back. Come back over the next few days to watch it climb.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Stat row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs uppercase tracking-wider text-white/40">Account value</p>
-          <p className="mt-1 font-display text-2xl font-bold text-white">{formatCurrency(value, { maximumFractionDigits: 0 })}</p>
-          <p className={cn("text-xs font-medium", dayChange >= 0 ? "text-capital-300" : "text-rose-400")}>
-            {dayChange >= 0 ? "+" : ""}
-            {formatCurrency(dayChange)} today
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs uppercase tracking-wider text-white/40">All-time P/L</p>
-          <p className={cn("mt-1 font-display text-2xl font-bold", gain.abs >= 0 ? "text-capital-300" : "text-rose-400")}>
-            {gain.abs >= 0 ? "+" : ""}
-            {formatCurrency(gain.abs)}
-          </p>
-          <p className="text-xs text-white/45">{formatPercent(gain.pct)} vs start</p>
-        </Card>
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wider text-white/40">Buying power</p>
           <p className="mt-1 font-display text-2xl font-bold text-white">{formatCurrency(portfolio.cash, { maximumFractionDigits: 0 })}</p>
-          <p className="text-xs text-white/45">{formatCurrency(invested, { maximumFractionDigits: 0 })} invested</p>
+          <p className="text-xs text-white/45">cash to invest</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wider text-white/40">Scores</p>
-          <p className="mt-1 font-display text-lg font-bold text-amber-300">{riskLabel(rScore)}</p>
-          <p className="text-xs text-capital-300">Diversification {dScore}/100</p>
+          <p className="text-xs uppercase tracking-wider text-white/40">Invested</p>
+          <p className="mt-1 font-display text-2xl font-bold text-white">{formatCurrency(invested, { maximumFractionDigits: 0 })}</p>
+          <p className="text-xs text-white/45">across {portfolio.positions.length} positions</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wider text-white/40">Risk</p>
+          <p className="mt-1 font-display text-2xl font-bold text-amber-300">{riskLabel(rScore)}</p>
+          <p className="text-xs text-white/45">how aggressive your mix is</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wider text-white/40">Diversification</p>
+          <p className="mt-1 font-display text-2xl font-bold text-capital-300">{dScore}/100</p>
+          <p className="text-xs text-white/45">spread across assets</p>
         </Card>
       </div>
 

@@ -35,7 +35,7 @@ import {
   levelForXp,
   nextStreak,
 } from "./progression";
-import { getRepository, type Snapshot } from "./repository";
+import { getRepository, type Snapshot, type EquityPoint } from "./repository";
 
 // ── Default (demo) snapshot, deterministic, SSR-safe ──────────────────────
 function demoSnapshot(): Snapshot {
@@ -48,6 +48,7 @@ function demoSnapshot(): Snapshot {
     notifications: seedNotifications,
     challengeProgress: {},
     lastActiveDate: null,
+    equityHistory: [],
   };
 }
 
@@ -110,9 +111,11 @@ interface AppStateValue {
   addComment: (postId: string, body: string) => void;
 
   // portfolio (paper trading)
+  equityHistory: EquityPoint[];
   buy: (order: BuyOrder) => { ok: boolean; reason?: string };
   sell: (positionId: string, shares: number, price: number) => void;
   resetPortfolio: () => void;
+  recordEquity: (value: number) => void;
 
   // misc
   markNotificationRead: (id: string) => void;
@@ -216,6 +219,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         ],
         challengeProgress: {},
         lastActiveDate: null,
+        equityHistory: [],
       }));
     },
     [patch],
@@ -419,8 +423,27 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   );
 
   const resetPortfolio = useCallback(
-    () => patch((s) => reconcile({ ...s, portfolio: structuredClonePortfolio(defaultPortfolio) })),
+    () =>
+      patch((s) =>
+        reconcile({ ...s, portfolio: structuredClonePortfolio(defaultPortfolio), equityHistory: [] }),
+      ),
     [patch, reconcile],
+  );
+
+  // Records a point on the equity curve. Throttled to one point per minute and
+  // capped, so the chart shows the portfolio's real value over time.
+  const recordEquity = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value) || value <= 0) return;
+      patch((s) => {
+        const last = s.equityHistory[s.equityHistory.length - 1];
+        const now = Date.now();
+        if (last && now - last.t < 60_000) return s;
+        const next = [...s.equityHistory, { t: now, v: Math.round(value * 100) / 100 }];
+        return { ...s, equityHistory: next.slice(-240) };
+      });
+    },
+    [patch],
   );
 
   // ── Misc ───────────────────────────────────────────────────────────────────
@@ -463,9 +486,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     toggleLike,
     addPost,
     addComment,
+    equityHistory: snap.equityHistory,
     buy,
     sell,
     resetPortfolio,
+    recordEquity,
     markNotificationRead,
     markAllNotificationsRead,
     setChallengeProgress,

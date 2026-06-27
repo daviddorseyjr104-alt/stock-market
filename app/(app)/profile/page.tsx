@@ -145,7 +145,9 @@ export default function ProfilePage() {
         </div>
 
         <div className="px-5 pb-6 sm:px-7">
-          <div className="-mt-12 flex flex-col gap-5 sm:-mt-14 sm:flex-row sm:items-end">
+          {/* Avatar straddles the banner; everything else sits below it on the
+              dark card so text is always readable. */}
+          <div className="-mt-11 sm:-mt-14">
             <Avatar
               name={user.fullName}
               gradient={user.avatarColor}
@@ -153,29 +155,29 @@ export default function ProfilePage() {
               ring
               className="shadow-float"
             />
-            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:pb-1">
-              <div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                    {user.fullName}
-                  </h1>
-                  <Pill tone="capital">{user.investingLevel}</Pill>
-                </div>
-                <p className="mt-0.5 text-sm text-white/50">@{user.username}</p>
+          </div>
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  {user.fullName}
+                </h1>
+                <Pill tone="capital">{user.investingLevel}</Pill>
               </div>
-              <div className="flex items-center gap-5 text-sm">
-                <div>
-                  <span className="font-display text-lg font-bold text-white">
-                    {user.followers.toLocaleString()}
-                  </span>{" "}
-                  <span className="text-white/45">followers</span>
-                </div>
-                <div>
-                  <span className="font-display text-lg font-bold text-white">
-                    {user.following.toLocaleString()}
-                  </span>{" "}
-                  <span className="text-white/45">following</span>
-                </div>
+              <p className="mt-1 text-sm text-white/50">@{user.username}</p>
+            </div>
+            <div className="flex items-center gap-6 text-sm">
+              <div>
+                <span className="font-display text-lg font-bold text-white">
+                  {user.followers.toLocaleString()}
+                </span>{" "}
+                <span className="text-white/45">followers</span>
+              </div>
+              <div>
+                <span className="font-display text-lg font-bold text-white">
+                  {user.following.toLocaleString()}
+                </span>{" "}
+                <span className="text-white/45">following</span>
               </div>
             </div>
           </div>

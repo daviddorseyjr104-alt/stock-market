@@ -19,6 +19,11 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const STORAGE_KEY = "cc_state_v1";
 
+export interface EquityPoint {
+  t: number; // epoch ms
+  v: number; // total account value at that time
+}
+
 export interface Snapshot {
   v: 1;
   authed: boolean;
@@ -28,6 +33,7 @@ export interface Snapshot {
   notifications: Notification[];
   challengeProgress: Record<string, number>;
   lastActiveDate: string | null;
+  equityHistory: EquityPoint[];
 }
 
 export interface Repository {
@@ -44,7 +50,10 @@ class LocalRepository implements Repository {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Snapshot;
-      return parsed.v === 1 ? parsed : null;
+      if (parsed.v !== 1) return null;
+      // Forward-compat: older snapshots may predate equityHistory.
+      if (!Array.isArray(parsed.equityHistory)) parsed.equityHistory = [];
+      return parsed;
     } catch {
       return null;
     }
