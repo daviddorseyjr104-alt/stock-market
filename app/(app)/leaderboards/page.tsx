@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Trophy,
   TrendingUp,
@@ -15,12 +15,12 @@ import { Pill } from "@/components/ui/Pill";
 import { Reveal } from "@/components/ui/Reveal";
 import { LeaderRows } from "@/components/leaderboards/LeaderboardTable";
 import { simulatorLeaders } from "@/lib/data/leaderboards";
-import { people } from "@/lib/data/people";
 import { schools, schoolById } from "@/lib/data/schools";
 import { clubs } from "@/lib/data/clubs";
 import { useAppState } from "@/lib/store";
+import { getStudentLeaders, type LeaderProfile } from "@/lib/social";
 import { cn, formatCompact, formatPercent } from "@/lib/utils";
-import type { LeaderRow, Profile } from "@/lib/types";
+import type { LeaderRow } from "@/lib/types";
 
 type BoardKey = "campus" | "student" | "weekly" | "clubs" | "streaks" | "simulator";
 
@@ -42,14 +42,31 @@ const PODIUM_ORDER = [2, 1, 3]; // visual left-to-right: 2nd, 1st, 3rd
 export default function LeaderboardsPage() {
   const { profile } = useAppState();
   const [active, setActive] = useState<BoardKey>("campus");
+  const [students, setStudents] = useState<LeaderProfile[]>([]);
 
-  // Roster = seed students, but the signed-in user replaces (or joins) the list
-  // with their REAL xp/streak — so they see themselves, not a stranger.
-  const roster: Profile[] = useMemo(() => {
-    const inSeed = people.some((p) => p.id === profile.id);
-    if (inSeed) return people.map((p) => (p.id === profile.id ? profile : p));
-    return [...people, profile];
-  }, [profile]);
+  useEffect(() => {
+    let alive = true;
+    getStudentLeaders().then((s) => alive && setStudents(s));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Roster = real students from the database, with the signed-in user merged in
+  // using their live xp/streak (so they see themselves, never a stranger).
+  const roster: LeaderProfile[] = useMemo(() => {
+    const me: LeaderProfile = {
+      id: profile.id,
+      fullName: profile.fullName,
+      avatarColor: profile.avatarColor,
+      xp: profile.xp,
+      streak: profile.streak,
+      schoolId: profile.schoolId,
+      major: profile.major,
+    };
+    const has = students.some((s) => s.id === profile.id);
+    return has ? students.map((s) => (s.id === profile.id ? me : s)) : [...students, me];
+  }, [students, profile]);
 
   const studentRows: LeaderRow[] = useMemo(
     () =>
@@ -58,7 +75,7 @@ export default function LeaderboardsPage() {
         .map((p, i) => ({
           rank: i + 1,
           name: p.fullName,
-          meta: `${schoolById(p.schoolId)?.shortName ?? ""} · ${p.major}`,
+          meta: `${schoolById(p.schoolId ?? "")?.shortName ?? ""}${p.major ? ` · ${p.major}` : ""}`,
           xp: p.xp,
           delta: 0,
           avatarColor: p.avatarColor,

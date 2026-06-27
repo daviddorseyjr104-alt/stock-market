@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Award,
@@ -35,6 +36,7 @@ import { badges, badgeById } from "@/lib/data/badges";
 import { lessonById } from "@/lib/data/lessons";
 import { clubById } from "@/lib/data/clubs";
 import { useAppState, levelForXp } from "@/lib/store";
+import { getFeed, type FeedPost } from "@/lib/social";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Badge } from "@/lib/types";
 
@@ -102,8 +104,17 @@ function BadgeCard({ badge, earned }: { badge: Badge; earned: boolean }) {
 }
 
 export default function ProfilePage() {
-  const { profile: user, posts } = useAppState();
+  const { profile: user } = useAppState();
   const school = schoolById(user.schoolId);
+
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  useEffect(() => {
+    let alive = true;
+    getFeed().then((p) => alive && setFeedPosts(p));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const earnedBadges = user.badges
     .map((id) => badgeById(id))
     .filter((b): b is Badge => Boolean(b));
@@ -114,8 +125,8 @@ export default function ProfilePage() {
   const userClubs = user.clubs
     .map((id) => clubById(id))
     .filter((c): c is NonNullable<ReturnType<typeof clubById>> => Boolean(c));
-  const myPosts = posts
-    .filter((p) => p.authorId === user.id)
+  const myPosts = feedPosts
+    .filter((p) => p.author.id === user.id)
     .sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),

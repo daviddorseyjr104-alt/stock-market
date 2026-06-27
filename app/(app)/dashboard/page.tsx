@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -20,8 +20,8 @@ import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/Progress";
 import { Avatar } from "@/components/ui/Avatar";
 import { WelcomeHero } from "@/components/dashboard/WelcomeHero";
-import { personById } from "@/lib/data/people";
 import { schoolById, schools } from "@/lib/data/schools";
+import { getFeed, type FeedPost } from "@/lib/social";
 import { modules } from "@/lib/data/modules";
 import { lessonsByModule, lessonById } from "@/lib/data/lessons";
 import { challenges } from "@/lib/data/challenges";
@@ -74,8 +74,17 @@ const WATCH = [
 ];
 
 export default function DashboardPage() {
-  const { profile, posts, portfolio, isLessonComplete } = useAppState();
+  const { profile, portfolio, isLessonComplete } = useAppState();
   const school = schoolById(profile.schoolId)!;
+
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  useEffect(() => {
+    let alive = true;
+    getFeed().then((p) => alive && setFeedPosts(p));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const lesson = nextLesson(isLessonComplete);
   const lessonModule = modules.find((m) => m.id === lesson.moduleId);
   const scoredChallenges = challenges.map((c) => ({
@@ -103,8 +112,8 @@ export default function DashboardPage() {
   const dScore = diversificationScore(portfolio.positions, priceOf);
   const schoolRank =
     [...schools].sort((a, b) => b.totalXp - a.totalXp).findIndex((s) => s.id === school.id) + 1;
-  const feed = posts
-    .filter((p) => p.schoolId === profile.schoolId)
+  const feed = feedPosts
+    .filter((p) => (p.schoolId ?? p.author.schoolId) === profile.schoolId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 4);
 
@@ -205,27 +214,33 @@ export default function DashboardPage() {
                 </Link>
               }
             />
-            <div className="space-y-3">
-              {feed.map((post) => {
-                const author = personById(post.authorId) ?? profile;
-                return (
+            {feed.length > 0 ? (
+              <div className="space-y-3">
+                {feed.map((post) => (
                   <Link
                     key={post.id}
                     href="/campus"
                     className="flex gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.03]"
                   >
-                    <Avatar name={author.fullName} gradient={author.avatarColor} size="sm" />
+                    <Avatar name={post.author.name} gradient={post.author.avatarColor} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">
-                        <span className="font-semibold text-white">{author.fullName}</span>{" "}
+                        <span className="font-semibold text-white">{post.author.name}</span>{" "}
                         <span className="text-white/40">· {timeAgo(post.createdAt)}</span>
                       </p>
                       <p className="line-clamp-2 text-sm text-white/55">{post.body}</p>
                     </div>
                   </Link>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center">
+                <p className="text-sm text-white/55">No campus posts yet.</p>
+                <Link href="/campus" className="mt-1 inline-block text-sm font-semibold text-capital-300 hover:underline">
+                  Be the first to post →
+                </Link>
+              </div>
+            )}
           </Card>
         </div>
 

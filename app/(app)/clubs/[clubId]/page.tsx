@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Crown,
   Globe,
-  MessageSquareDashed,
   Target,
   Trophy,
   Users,
@@ -13,11 +12,9 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { PostCard } from "@/components/campus/PostCard";
+import { ClubFeed } from "@/components/campus/ClubFeed";
 import { clubById } from "@/lib/data/clubs";
 import { currentUser, people } from "@/lib/data/people";
-import { postsByClub } from "@/lib/data/posts";
 import { schoolById } from "@/lib/data/schools";
 import { cn, formatCompact } from "@/lib/utils";
 
@@ -30,7 +27,6 @@ export default function ClubDetailPage({
   if (!club) notFound();
 
   const joined = currentUser.clubs.includes(club.id);
-  const clubPosts = postsByClub(club.id);
 
   // Members shown for this club, pull from the people directory.
   const members = people
@@ -153,24 +149,7 @@ export default function ClubDetailPage({
             <h2 className="mb-3 font-display text-lg font-semibold tracking-tight text-white">
               Club feed
             </h2>
-            {clubPosts.length > 0 ? (
-              <div className="space-y-5">
-                {clubPosts.map((post) => (
-                  <PostCard key={post.id} post={post} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={<MessageSquareDashed className="h-7 w-7" />}
-                title="No club posts yet"
-                description="Posts tagged to this club appear here. Kick things off by sharing a win or a question with your community."
-                action={
-                  <Button variant="outline" size="sm" href="/campus">
-                    Post to the feed
-                  </Button>
-                }
-              />
-            )}
+            <ClubFeed clubId={club.id} />
           </div>
         </div>
 
