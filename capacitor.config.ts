@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   backgroundColor: "#05060a",
   server: {
     androidScheme: "https",
-    // url: "https://your-campus-capital.vercel.app",  // <- set after deploying
+    url: "https://stock-market-theta-jet.vercel.app",
   },
   ios: {
     contentInset: "always",

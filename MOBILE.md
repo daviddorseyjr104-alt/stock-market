@@ -13,6 +13,28 @@ Campus Capital is one codebase that ships three ways. The **web app is the engin
 
 ---
 
+## ⭐ Easiest path to the app stores from Windows: PWABuilder
+
+The app is already a valid PWA (manifest + service worker + icon), and it's
+deployed. That means **[PWABuilder](https://www.pwabuilder.com)** (Microsoft's
+free tool) can package it into store-ready apps **without Android Studio and
+without writing any native code**:
+
+1. Go to **https://www.pwabuilder.com**
+2. Paste your live URL: `https://stock-market-theta-jet.vercel.app`
+3. It scores the PWA, then lets you **Package For Stores**:
+   - **Android** → downloads a signed `.aab` you upload straight to the
+     **Google Play Console** ($25 one-time, works from Windows).
+   - **iOS** → downloads an Xcode project — you still need a Mac + Apple
+     Developer account ($99/yr) to submit, but PWABuilder does the hard part.
+   - **Windows** → an `.msix` for the Microsoft Store.
+
+This is the fastest route to a real, listed app for a solo Windows developer.
+The Capacitor route below is the alternative when you want deeper native
+features (push notifications, native plugins).
+
+---
+
 ## 1. Web — deploy first (everything else depends on it)
 
 1. Push to GitHub (already done).
