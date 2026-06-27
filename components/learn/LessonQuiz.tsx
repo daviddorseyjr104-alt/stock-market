@@ -70,7 +70,7 @@ export function LessonQuiz({
       const r = completeLesson(lessonId);
       setReward(r);
       setDone(true);
-      track("quiz_finished", { lessonId, correct: correctCount, total });
+      track("quiz_finished", { lessonId, score: `${correctCount}/${total}` });
       if (!r.alreadyDone) track("lesson_completed", { lessonId, xp: r.xpGained });
     }
   }
