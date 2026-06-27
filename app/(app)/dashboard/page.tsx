@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -25,14 +26,18 @@ import { modules } from "@/lib/data/modules";
 import { lessonsByModule, lessonById } from "@/lib/data/lessons";
 import { challenges } from "@/lib/data/challenges";
 import { useAppState, levelForXp } from "@/lib/store";
+import { useQuotes } from "@/lib/use-quotes";
 import {
-  portfolioValue,
-  dayChange,
+  priceFromQuotes,
+  totalValue,
+  totalGain,
+  investedValue,
+  positionValue,
   riskScore,
   riskLabel,
   diversificationScore,
 } from "@/lib/portfolio-utils";
-import { formatCurrency, timeAgo, cn } from "@/lib/utils";
+import { formatCurrency, formatPercent, timeAgo, cn } from "@/lib/utils";
 
 function nextLesson(isLessonComplete: (id: string) => boolean) {
   for (const m of modules) {
@@ -43,11 +48,11 @@ function nextLesson(isLessonComplete: (id: string) => boolean) {
   return lessonById("portfolio-allocation")!;
 }
 
-const watchlist = [
-  { ticker: "VTI", name: "Total US Market", price: 268.4, change: 0.8 },
-  { ticker: "VOO", name: "S&P 500 ETF", price: 512.1, change: 1.1 },
-  { ticker: "SCHD", name: "Dividend ETF", price: 81.7, change: -0.3 },
-  { ticker: "QQQ", name: "Nasdaq-100", price: 484.2, change: 1.6 },
+const WATCH = [
+  { ticker: "VTI", name: "Total US Market" },
+  { ticker: "VOO", name: "S&P 500 ETF" },
+  { ticker: "SCHD", name: "Dividend ETF" },
+  { ticker: "QQQ", name: "Nasdaq-100" },
 ];
 
 export default function DashboardPage() {
@@ -56,10 +61,20 @@ export default function DashboardPage() {
   const lesson = nextLesson(isLessonComplete);
   const lessonModule = modules.find((m) => m.id === lesson.moduleId);
   const challenge = challenges.find((c) => c.progress > 0) ?? challenges[0];
-  const value = portfolioValue(portfolio);
-  const change = dayChange(portfolio);
-  const rScore = riskScore(portfolio.holdings);
-  const dScore = diversificationScore(portfolio.holdings);
+
+  const tickers = useMemo(
+    () => Array.from(new Set([...portfolio.positions.map((p) => p.ticker), ...WATCH.map((w) => w.ticker)])),
+    [portfolio.positions],
+  );
+  const { quotes } = useQuotes(tickers, 60_000);
+  const priceOf = useMemo(() => priceFromQuotes(quotes, portfolio.positions), [quotes, portfolio.positions]);
+
+  const value = totalValue(portfolio, priceOf);
+  const gain = totalGain(portfolio, priceOf);
+  const invested = investedValue(portfolio.positions, priceOf);
+  const change = portfolio.positions.reduce((s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0), 0);
+  const rScore = riskScore(portfolio.positions, priceOf);
+  const dScore = diversificationScore(portfolio.positions, priceOf);
   const schoolRank =
     [...schools].sort((a, b) => b.totalXp - a.totalXp).findIndex((s) => s.id === school.id) + 1;
   const feed = posts
@@ -128,6 +143,10 @@ export default function DashboardPage() {
                   {change >= 0 ? "+" : ""}
                   {formatCurrency(change)} today
                 </div>
+                <div className="text-xs text-white/40">
+                  All-time {gain.abs >= 0 ? "+" : ""}
+                  {formatCurrency(gain.abs)} ({formatPercent(gain.pct)})
+                </div>
               </div>
               <div className="flex gap-3">
                 <MiniStat label="Risk" value={riskLabel(rScore)} tone="amber" />
@@ -135,13 +154,16 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="mt-4 space-y-2">
-              {portfolio.holdings.slice(0, 3).map((h) => (
-                <div key={h.id} className="flex items-center gap-3">
-                  <span className="w-12 font-mono text-xs font-semibold text-white/70">{h.ticker}</span>
-                  <ProgressBar value={h.allocation * 2.4} className="h-1.5 flex-1" />
-                  <span className="w-9 text-right text-xs text-white/45">{h.allocation}%</span>
-                </div>
-              ))}
+              {portfolio.positions.slice(0, 3).map((p) => {
+                const pct = invested > 0 ? (positionValue(p, priceOf) / invested) * 100 : 0;
+                return (
+                  <div key={p.id} className="flex items-center gap-3">
+                    <span className="w-12 font-mono text-xs font-semibold text-white/70">{p.ticker}</span>
+                    <ProgressBar value={pct} className="h-1.5 flex-1" />
+                    <span className="w-9 text-right text-xs text-white/45">{pct.toFixed(0)}%</span>
+                  </div>
+                );
+              })}
             </div>
           </Card>
 
@@ -249,24 +271,28 @@ export default function DashboardPage() {
           <Card>
             <CardHeader title="Watchlist" subtitle="Tracked for learning" icon={<Eye className="h-4 w-4" />} />
             <div className="space-y-1">
-              {watchlist.map((w) => (
-                <div key={w.ticker} className="flex items-center justify-between rounded-xl px-2 py-2 hover:bg-white/[0.03]">
-                  <div>
-                    <p className="font-mono text-sm font-semibold text-white">{w.ticker}</p>
-                    <p className="text-xs text-white/40">{w.name}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-white">${w.price.toFixed(2)}</p>
-                    <p className={cn("text-xs font-medium", w.change >= 0 ? "text-capital-300" : "text-rose-400")}>
-                      {w.change >= 0 ? "+" : ""}
-                      {w.change}%
-                    </p>
-                  </div>
-                </div>
-              ))}
+              {WATCH.map((w) => {
+                const q = quotes[w.ticker.toUpperCase()];
+                return (
+                  <Link key={w.ticker} href="/simulator" className="flex items-center justify-between rounded-xl px-2 py-2 hover:bg-white/[0.03]">
+                    <div>
+                      <p className="font-mono text-sm font-semibold text-white">{w.ticker}</p>
+                      <p className="text-xs text-white/40">{w.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-white">{q ? formatCurrency(q.price, { maximumFractionDigits: 2 }) : "…"}</p>
+                      {q && (
+                        <p className={cn("text-xs font-medium", q.changePct >= 0 ? "text-capital-300" : "text-rose-400")}>
+                          {formatPercent(q.changePct)}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
             <p className="mt-3 text-center text-[11px] text-white/30">
-              Illustrative prices · educational only
+              {quotes[WATCH[0].ticker]?.live ? "Live market prices" : "Simulated prices · educational only"}
             </p>
           </Card>
         </div>

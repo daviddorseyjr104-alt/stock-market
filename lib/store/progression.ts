@@ -1,4 +1,4 @@
-import type { Holding, Profile } from "@/lib/types";
+import type { Position, Profile } from "@/lib/types";
 import { lessons } from "@/lib/data/lessons";
 
 export const XP_PER_LEVEL = 1000;
@@ -33,7 +33,7 @@ export function nextStreak(current: number, lastActive: string | null): number {
  * Recomputes the full set of earned badge ids from the user's real state.
  * This is the single source of truth for badges — no hardcoded awards.
  */
-export function computeBadges(profile: Profile, holdings: Holding[]): string[] {
+export function computeBadges(profile: Profile, positions: Position[]): string[] {
   const done = new Set(profile.completedLessons);
   const earned = new Set<string>();
 
@@ -48,7 +48,7 @@ export function computeBadges(profile: Profile, holdings: Holding[]): string[] {
   if (profile.streak >= 30) earned.add("streak-30");
   if (profile.campusRank > 0 && profile.campusRank <= 10) earned.add("campus-top-10");
 
-  const assetTypes = new Set(holdings.map((h) => h.assetType));
+  const assetTypes = new Set(positions.map((p) => p.assetType));
   if (assetTypes.size >= 4) earned.add("diversified");
 
   return Array.from(earned);

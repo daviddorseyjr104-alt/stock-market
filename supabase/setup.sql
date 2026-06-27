@@ -1,7 +1,7 @@
 -- ════════════════════════════════════════════════════════════════════════
 -- Campus Capital — ONE-SHOT SETUP
 -- Paste this entire file into the Supabase SQL Editor and click Run.
--- It creates the schema, enables Row Level Security, and seeds catalog data.
+-- Creates schema, enables Row Level Security, and seeds catalog data.
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ╔══ 1/3 SCHEMA ══╗
@@ -229,7 +229,8 @@ create table if not exists portfolio_holdings (
   ticker        text not null,
   name          text,
   asset_type    text,
-  allocation    numeric,
+  shares        numeric default 0,   -- paper-trading: shares held
+  avg_cost      numeric default 0,   -- average cost basis per share
   risk          text,
   lesson_id     text references lessons(id),
   created_at    timestamptz default now()

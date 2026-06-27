@@ -11,14 +11,16 @@ import {
 } from "react";
 import type {
   Goal,
-  Holding,
+  AssetType,
   Interest,
   InvestingLevel,
   Notification,
   Portfolio,
+  Position,
   Post,
   PostCategory,
   Profile,
+  RiskLabel,
   StudentType,
 } from "@/lib/types";
 import { currentUser as demoPersona } from "@/lib/data/people";
@@ -50,7 +52,17 @@ function demoSnapshot(): Snapshot {
 }
 
 function structuredClonePortfolio(p: Portfolio): Portfolio {
-  return { ...p, holdings: p.holdings.map((h) => ({ ...h })) };
+  return { ...p, positions: p.positions.map((h) => ({ ...h })) };
+}
+
+export interface BuyOrder {
+  ticker: string;
+  name: string;
+  assetType: AssetType;
+  risk: RiskLabel;
+  lessonId?: string;
+  shares: number;
+  price: number;
 }
 
 export interface SignupInput {
@@ -97,10 +109,9 @@ interface AppStateValue {
   addPost: (body: string, category: PostCategory, clubId?: string) => void;
   addComment: (postId: string, body: string) => void;
 
-  // portfolio
-  setPortfolio: (next: Portfolio) => void;
-  addHolding: (h: Holding) => void;
-  removeHolding: (id: string) => void;
+  // portfolio (paper trading)
+  buy: (order: BuyOrder) => { ok: boolean; reason?: string };
+  sell: (positionId: string, shares: number, price: number) => void;
   resetPortfolio: () => void;
 
   // misc
@@ -148,7 +159,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // Recompute derived progression fields (level, badges) after a state change.
   const reconcile = useCallback((s: Snapshot): Snapshot => {
     const level = levelForXp(s.profile.xp);
-    const badges = computeBadges(s.profile, s.portfolio.holdings);
+    const badges = computeBadges(s.profile, s.portfolio.positions);
     return { ...s, profile: { ...s.profile, level, badges } };
   }, []);
 
@@ -338,26 +349,75 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [patch],
   );
 
-  // ── Portfolio ──────────────────────────────────────────────────────────────
-  const setPortfolio = useCallback(
-    (next: Portfolio) => patch((s) => reconcile({ ...s, portfolio: next })),
-    [patch, reconcile],
-  );
-  const addHolding = useCallback(
-    (h: Holding) =>
-      patch((s) => reconcile({ ...s, portfolio: { ...s.portfolio, holdings: [...s.portfolio.holdings, h] } })),
-    [patch, reconcile],
-  );
-  const removeHolding = useCallback(
-    (id: string) =>
-      patch((s) =>
-        reconcile({
+  // ── Portfolio (paper trading: real prices, fake money) ──────────────────────
+  const buy = useCallback(
+    (order: BuyOrder): { ok: boolean; reason?: string } => {
+      const cost = order.shares * order.price;
+      let result: { ok: boolean; reason?: string } = { ok: true };
+      patch((s) => {
+        if (order.shares <= 0 || order.price <= 0) {
+          result = { ok: false, reason: "Enter a valid amount." };
+          return s;
+        }
+        if (cost > s.portfolio.cash + 1e-6) {
+          result = { ok: false, reason: "Not enough buying power." };
+          return s;
+        }
+        const positions = [...s.portfolio.positions];
+        const i = positions.findIndex(
+          (p) => p.ticker.toUpperCase() === order.ticker.toUpperCase(),
+        );
+        if (i >= 0) {
+          const prev = positions[i];
+          const totalShares = prev.shares + order.shares;
+          const avgCost = (prev.shares * prev.avgCost + cost) / totalShares;
+          positions[i] = { ...prev, shares: totalShares, avgCost };
+        } else {
+          const pos: Position = {
+            id: `pos-${Date.now()}`,
+            ticker: order.ticker.toUpperCase(),
+            name: order.name,
+            assetType: order.assetType,
+            risk: order.risk,
+            shares: order.shares,
+            avgCost: order.price,
+            lessonId: order.lessonId,
+          };
+          positions.push(pos);
+        }
+        return reconcile({
           ...s,
-          portfolio: { ...s.portfolio, holdings: s.portfolio.holdings.filter((h) => h.id !== id) },
-        }),
-      ),
+          portfolio: { ...s.portfolio, cash: s.portfolio.cash - cost, positions },
+        });
+      });
+      return result;
+    },
     [patch, reconcile],
   );
+
+  const sell = useCallback(
+    (positionId: string, shares: number, price: number) => {
+      patch((s) => {
+        const pos = s.portfolio.positions.find((p) => p.id === positionId);
+        if (!pos || shares <= 0) return s;
+        const qty = Math.min(shares, pos.shares);
+        const proceeds = qty * price;
+        const remaining = pos.shares - qty;
+        const positions =
+          remaining > 1e-6
+            ? s.portfolio.positions.map((p) =>
+                p.id === positionId ? { ...p, shares: remaining } : p,
+              )
+            : s.portfolio.positions.filter((p) => p.id !== positionId);
+        return reconcile({
+          ...s,
+          portfolio: { ...s.portfolio, cash: s.portfolio.cash + proceeds, positions },
+        });
+      });
+    },
+    [patch, reconcile],
+  );
+
   const resetPortfolio = useCallback(
     () => patch((s) => reconcile({ ...s, portfolio: structuredClonePortfolio(defaultPortfolio) })),
     [patch, reconcile],
@@ -403,9 +463,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     toggleLike,
     addPost,
     addComment,
-    setPortfolio,
-    addHolding,
-    removeHolding,
+    buy,
+    sell,
     resetPortfolio,
     markNotificationRead,
     markAllNotificationsRead,

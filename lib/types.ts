@@ -182,21 +182,25 @@ export interface Challenge {
 export type AssetType = "Stock" | "ETF" | "Index Fund" | "Bond" | "Cash";
 export type RiskLabel = "Low" | "Medium" | "High";
 
-export interface Holding {
+/**
+ * A held position in the paper-trading simulator. Real shares bought at live
+ * prices with fake money — value is shares × live price, P/L vs avgCost.
+ */
+export interface Position {
   id: string;
   ticker: string;
   name: string;
   assetType: AssetType;
-  allocation: number; // percent of portfolio
   risk: RiskLabel;
-  changePct: number; // mock daily change
+  shares: number; // can be fractional
+  avgCost: number; // average cost basis per share
   lessonId?: string;
 }
 
 export interface Portfolio {
-  startingBalance: number;
-  cash: number;
-  holdings: Holding[];
+  startingBalance: number; // fake starting cash, e.g. 10,000
+  cash: number; // remaining buying power
+  positions: Position[];
 }
 
 export type NotificationType =

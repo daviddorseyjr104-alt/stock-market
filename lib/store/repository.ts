@@ -122,23 +122,24 @@ class SupabaseRepository implements Repository {
       snap.portfolio = {
         startingBalance: Number(accounts.starting_balance) || 10000,
         cash: Number(accounts.cash) || 0,
-        holdings: (accounts.portfolio_holdings ?? []).map(
+        positions: (accounts.portfolio_holdings ?? []).map(
           (h: {
             id: string;
             ticker: string;
             name: string;
-            asset_type: Portfolio["holdings"][number]["assetType"];
-            allocation: number;
-            risk: Portfolio["holdings"][number]["risk"];
+            asset_type: Portfolio["positions"][number]["assetType"];
+            shares: number;
+            avg_cost: number;
+            risk: Portfolio["positions"][number]["risk"];
             lesson_id?: string;
           }) => ({
             id: h.id,
             ticker: h.ticker,
             name: h.name,
             assetType: h.asset_type,
-            allocation: Number(h.allocation),
+            shares: Number(h.shares),
+            avgCost: Number(h.avg_cost),
             risk: h.risk,
-            changePct: 0,
             lessonId: h.lesson_id,
           }),
         ),
@@ -209,14 +210,15 @@ class SupabaseRepository implements Repository {
 
     if (account) {
       await supabase.from("portfolio_holdings").delete().eq("account_id", account.id);
-      if (snap.portfolio.holdings.length) {
+      if (snap.portfolio.positions.length) {
         await supabase.from("portfolio_holdings").insert(
-          snap.portfolio.holdings.map((h) => ({
+          snap.portfolio.positions.map((h) => ({
             account_id: account.id,
             ticker: h.ticker,
             name: h.name,
             asset_type: h.assetType,
-            allocation: h.allocation,
+            shares: h.shares,
+            avg_cost: h.avgCost,
             risk: h.risk,
             lesson_id: h.lessonId ?? null,
           })),

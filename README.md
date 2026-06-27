@@ -22,7 +22,7 @@ Campus Capital is a **social investing-education network for college students**.
 | --- | --- |
 | 🎓 **Campus network** | Join your school, follow classmates, post, and climb a national leaderboard together. |
 | 📚 **Learning system** | 20 student-native lessons across 5 modules — each with a real-life example, analogy, quiz, and XP. |
-| 📈 **Portfolio simulator** | A $10,000 **mock** portfolio with live risk + diversification scores. Zero real money. |
+| 📈 **Trading simulator** | Paper-trade **real tickers at live market prices** with $10,000 of fake money — buy/sell, cost basis, live P/L, risk + diversification scores. Zero real money, no real orders. |
 | 🏆 **Leaderboards** | Student XP, campus XP, school-vs-school, clubs, streaks, and simulator performance. |
 | 🤖 **Capital Coach** | An AI tutor that answers money questions in plain student language. |
 | 🔥 **Habit loop** | Streaks, XP, levels, badges, and weekly challenges that make learning addictive. |
