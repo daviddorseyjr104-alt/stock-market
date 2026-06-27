@@ -125,20 +125,20 @@ export function Hero() {
           <div className="mb-3 flex justify-center lg:justify-start">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/45">
               <Sparkles className="h-3 w-3 text-capital-300" />
-              Product preview · sample dashboard
+              Preview · a new student's first day
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3.5">
             <PreviewCard delay={0.25} float={-8} className="col-span-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/45">Campus rank</span>
-                <span className="text-lg">🐻</span>
+                <Trophy className="h-4 w-4 text-amber-300" />
               </div>
               <div className="mt-1 font-display text-2xl font-bold text-white">
-                #4 <span className="text-sm font-medium text-white/40">UCLA</span>
+                Unranked
               </div>
-              <div className="mt-1 inline-flex items-center gap-1 text-xs text-capital-300">
-                <TrendingUp className="h-3 w-3" /> +2 this week
+              <div className="mt-1 text-xs text-white/40">
+                Earn XP to climb your school
               </div>
             </PreviewCard>
 
@@ -148,16 +148,11 @@ export function Hero() {
                 <Flame className="h-4 w-4 text-orange-400" />
               </div>
               <div className="mt-1 font-display text-2xl font-bold text-white">
-                12 days
+                Day 0
               </div>
               <div className="mt-2 flex gap-1">
                 {Array.from({ length: 7 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`h-1.5 flex-1 rounded-full ${
-                      i < 6 ? "bg-orange-400" : "bg-white/10"
-                    }`}
-                  />
+                  <div key={i} className="h-1.5 flex-1 rounded-full bg-white/10" />
                 ))}
               </div>
             </PreviewCard>
@@ -177,27 +172,19 @@ export function Hero() {
               <div className="mt-3 flex items-end justify-between">
                 <div>
                   <div className="font-display text-2xl font-bold text-white">
-                    $10,420
+                    $10,000
                   </div>
-                  <div className="text-xs text-capital-300">+$420 (4.2%)</div>
+                  <div className="text-xs text-white/40">Starting balance · ready to invest</div>
                 </div>
                 <svg viewBox="0 0 120 40" className="h-12 w-32">
-                  <defs>
-                    <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#39f5ac" stopOpacity="0.5" />
-                      <stop offset="100%" stopColor="#39f5ac" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
                   <path
-                    d="M0 32 L20 28 L40 30 L60 20 L80 22 L100 10 L120 6"
+                    d="M0 30 L120 30"
                     fill="none"
                     stroke="#39f5ac"
                     strokeWidth="2"
                     strokeLinecap="round"
-                  />
-                  <path
-                    d="M0 32 L20 28 L40 30 L60 20 L80 22 L100 10 L120 6 L120 40 L0 40 Z"
-                    fill="url(#spark)"
+                    strokeOpacity="0.45"
+                    strokeDasharray="3 5"
                   />
                 </svg>
               </div>
@@ -211,23 +198,23 @@ export function Hero() {
                 </span>
               </div>
               <p className="mt-2 text-sm text-white/55">
-                The Roth IRA: a student&apos;s secret weapon
+                What is investing, really?
               </p>
               <div className="mt-3 flex items-center gap-3">
-                <ProgressBar value={60} className="h-1.5" />
-                <span className="shrink-0 text-xs text-capital-300">+80 XP</span>
+                <ProgressBar value={0} className="h-1.5" />
+                <span className="shrink-0 text-xs text-capital-300">+50 XP</span>
               </div>
             </PreviewCard>
 
             <PreviewCard delay={0.57} float={8} className="col-span-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-white/45">Campus XP</span>
-                <Trophy className="h-4 w-4 text-amber-300" />
+                <span className="text-xs text-white/45">Your XP</span>
+                <Star className="h-4 w-4 fill-amber-300 text-amber-300" />
               </div>
               <div className="mt-1 font-display text-2xl font-bold text-white">
-                4,820
+                0
               </div>
-              <div className="text-xs text-white/40">Level 7 · Investor</div>
+              <div className="text-xs text-white/40">Level 1 · New investor</div>
             </PreviewCard>
 
             <PreviewCard delay={0.65} float={-9} className="col-span-1">

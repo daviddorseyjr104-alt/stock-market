@@ -306,15 +306,15 @@ export function SimulatorSection() {
       <div className="grid items-center gap-12 lg:grid-cols-2">
         <Reveal className="order-2 lg:order-1">
           <Card glow className="p-6">
-            <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex items-center justify-between">
               <Pill>Example portfolio</Pill>
+              <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[10px] text-white/40">
+                Mock · $0 real
+              </span>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-white/45">Mock balance</p>
-                <p className="font-display text-3xl font-bold text-white">$10,420</p>
-              </div>
-              <Pill tone="capital">+4.2% all-time</Pill>
+            <div>
+              <p className="text-xs text-white/45">Starting balance</p>
+              <p className="font-display text-3xl font-bold text-white">$10,000</p>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
               {[
