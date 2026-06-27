@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/Progress";
+import { lessons } from "@/lib/data/lessons";
+import { schools } from "@/lib/data/schools";
 
 function PreviewCard({
   children,
@@ -104,11 +106,11 @@ export function Hero() {
             className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm text-white/45"
           >
             <div className="flex items-center gap-2">
-              <span className="font-display text-xl font-bold text-white">11</span>{" "}
-              campuses competing
+              <span className="font-display text-xl font-bold text-white">{schools.length}</span>{" "}
+              campus communities
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-display text-xl font-bold text-white">20</span>{" "}
+              <span className="font-display text-xl font-bold text-white">{lessons.length}</span>{" "}
               student-native lessons
             </div>
             <div className="flex items-center gap-2">
@@ -120,6 +122,12 @@ export function Hero() {
 
         {/* Animated dashboard preview */}
         <div className="relative mx-auto w-full max-w-md lg:max-w-none">
+          <div className="mb-3 flex justify-center lg:justify-start">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/45">
+              <Sparkles className="h-3 w-3 text-capital-300" />
+              Product preview · sample dashboard
+            </span>
+          </div>
           <div className="grid grid-cols-2 gap-3.5">
             <PreviewCard delay={0.25} float={-8} className="col-span-1">
               <div className="flex items-center justify-between">
