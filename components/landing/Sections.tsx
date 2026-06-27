@@ -20,8 +20,8 @@ import { Reveal } from "@/components/ui/Reveal";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
-import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { schools } from "@/lib/data/schools";
+import { lessons } from "@/lib/data/lessons";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -191,11 +191,14 @@ export function CampusNetwork() {
         <Reveal delay={0.1} className="mt-12">
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-white/40">
-                Live campus leaderboard
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-white/40">
+                  Campus leaderboard
+                </p>
+                <Pill>Example</Pill>
+              </div>
               <div className="mt-4 space-y-2.5">
-                {schools.slice(0, 5).sort((a, b) => b.totalXp - a.totalXp).map((s, i) => (
+                {schools.slice(0, 5).map((s, i) => (
                   <div
                     key={s.id}
                     className="flex items-center gap-3 rounded-2xl bg-white/[0.02] px-3 py-2.5"
@@ -207,30 +210,28 @@ export function CampusNetwork() {
                     <span className="flex-1 text-sm font-medium text-white">
                       {s.shortName}
                     </span>
-                    <span className="text-xs text-white/40">
-                      {s.activeStudents.toLocaleString()} active
-                    </span>
-                    <span className="font-display text-sm font-semibold text-capital-300">
-                      {(s.totalXp / 1000).toFixed(0)}k XP
-                    </span>
+                    <span className="truncate text-xs text-white/35">{s.location}</span>
                   </div>
                 ))}
               </div>
+              <p className="mt-4 text-xs text-white/35">
+                Live standings populate as students at each school start learning.
+              </p>
             </Card>
             <div className="grid gap-4">
               <Card className="flex flex-col justify-center">
                 <Crown className="h-6 w-6 text-amber-300" />
                 <div className="mt-3 font-display text-3xl font-bold text-white">
-                  <AnimatedNumber value={11} /> campuses
+                  {schools.length} campuses
                 </div>
-                <p className="text-sm text-white/50">competing nationally</p>
+                <p className="text-sm text-white/50">communities you can join</p>
               </Card>
               <Card className="flex flex-col justify-center">
-                <Users className="h-6 w-6 text-sky-300" />
+                <BookOpen className="h-6 w-6 text-sky-300" />
                 <div className="mt-3 font-display text-3xl font-bold text-white">
-                  <AnimatedNumber value={28} suffix="k+" />
+                  {lessons.length} lessons
                 </div>
-                <p className="text-sm text-white/50">student investors learning</p>
+                <p className="text-sm text-white/50">student-native, always free</p>
               </Card>
             </div>
           </div>
@@ -305,6 +306,9 @@ export function SimulatorSection() {
       <div className="grid items-center gap-12 lg:grid-cols-2">
         <Reveal className="order-2 lg:order-1">
           <Card glow className="p-6">
+            <div className="mb-3 flex justify-end">
+              <Pill>Example portfolio</Pill>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-white/45">Mock balance</p>
@@ -367,25 +371,22 @@ export function LeaderboardSection() {
           healthy race that makes showing up every day irresistible.
         </p>
       </Reveal>
-      <div className="mt-12 grid gap-4 sm:grid-cols-3">
-        {schools.slice(0, 3).sort((a, b) => b.totalXp - a.totalXp).map((s, i) => (
-          <Reveal key={s.id} delay={i * 0.07}>
-            <Card hover glow={i === 0} className="text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-3xl">
-                {s.emoji}
+      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[
+          { icon: Trophy, label: "Student XP", text: "Who's putting in the most reps." },
+          { icon: GraduationCap, label: "Campus XP", text: "Your school's collective total." },
+          { icon: Network, label: "School vs school", text: "Rep your campus nationally." },
+          { icon: Users, label: "Club vs club", text: "Communities climb together." },
+          { icon: Flame, label: "Streaks", text: "Consistency is the real flex." },
+          { icon: TrendingUp, label: "Simulator", text: "Best paper-trading runs." },
+        ].map((b, i) => (
+          <Reveal key={b.label} delay={i * 0.05}>
+            <Card hover className="h-full">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-capital-300">
+                <b.icon className="h-5 w-5" />
               </div>
-              <div className="mt-3 font-display text-sm font-semibold text-white/50">
-                #{i + 1}
-              </div>
-              <h3 className="font-display text-xl font-bold text-white">
-                {s.shortName}
-              </h3>
-              <p className="mt-1 text-2xl font-bold text-gradient-capital">
-                <AnimatedNumber value={Math.round(s.totalXp / 1000)} suffix="k XP" />
-              </p>
-              <p className="mt-1 text-xs text-capital-300">
-                +{s.weeklyGrowth}% this week
-              </p>
+              <h3 className="mt-4 font-display font-semibold text-white">{b.label}</h3>
+              <p className="mt-1 text-sm text-white/55">{b.text}</p>
             </Card>
           </Reveal>
         ))}
