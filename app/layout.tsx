@@ -20,6 +20,7 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://stock-market-theta-jet.vercel.app"),
   title: {
     default: "Campus Capital, Investing education built for students",
     template: "%s · Campus Capital",
@@ -38,6 +39,12 @@ export const metadata: Metadata = {
     title: "Campus Capital",
     description: "Investing education built for students before they have money.",
     type: "website",
+    siteName: "Campus Capital",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Campus Capital",
+    description: "Investing education built for students before they have money.",
   },
   manifest: "/manifest.webmanifest",
   applicationName: "Campus Capital",
