@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   PieChart as PieIcon,
@@ -46,10 +46,43 @@ export default function SimulatorPage() {
   const { portfolio, buy, sell, resetPortfolio } = useAppState();
 
   const [selected, setSelected] = useState(tickerCatalog[0].ticker);
+  const [selectedName, setSelectedName] = useState<string>(tickerCatalog[0].name);
   const [search, setSearch] = useState("");
+  const [results, setResults] = useState<{ symbol: string; description: string }[]>([]);
+  const [searching, setSearching] = useState(false);
   const [mode, setMode] = useState<"shares" | "dollars">("dollars");
   const [amount, setAmount] = useState("250");
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  // Live symbol search (debounced) — trade ANY real US stock or ETF.
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/symbol-search?q=${encodeURIComponent(q)}`);
+        const data = (await res.json()) as { results: { symbol: string; description: string }[] };
+        setResults(data.results ?? []);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 280);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  function pickSymbol(symbol: string, name: string) {
+    setSelected(symbol.toUpperCase());
+    setSelectedName(name);
+    setSearch("");
+    setResults([]);
+  }
 
   const tickers = useMemo(
     () =>
@@ -81,13 +114,10 @@ export default function SimulatorPage() {
   const selectedQuote = quotes[selected.toUpperCase()];
   const selectedPrice = selectedQuote?.price ?? 0;
   const selectedMeta = catalogByTicker(selected);
+  const selectedDisplayName = selectedMeta?.name ?? selectedName;
   const qty = Math.max(0, Number(amount) || 0);
   const orderShares = mode === "shares" ? qty : selectedPrice > 0 ? qty / selectedPrice : 0;
   const orderCost = orderShares * selectedPrice;
-
-  const filtered = search
-    ? tickerCatalog.filter((c) => (c.ticker + c.name).toLowerCase().includes(search.toLowerCase()))
-    : tickerCatalog;
 
   function showFlash(kind: "ok" | "err", msg: string) {
     setFlash({ kind, msg });
@@ -98,7 +128,7 @@ export default function SimulatorPage() {
     const meta = catalogByTicker(selected);
     const res = buy({
       ticker: selected.toUpperCase(),
-      name: meta?.name ?? selected.toUpperCase(),
+      name: meta?.name ?? selectedName ?? selected.toUpperCase(),
       assetType: meta?.assetType ?? "Stock",
       risk: (meta?.risk ?? "High") as RiskLabel,
       lessonId: meta?.lessonId,
@@ -268,33 +298,58 @@ export default function SimulatorPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value.toUpperCase())}
-                placeholder="Search ticker (VTI, AAPL...)"
+                placeholder="Search any stock or ETF (TSLA, Apple, NVDA...)"
                 className="w-full bg-transparent py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none"
               />
             </div>
-            <div className="mb-4 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto no-scrollbar">
-              {filtered.map((c) => (
-                <button
-                  key={c.ticker}
-                  onClick={() => {
-                    setSelected(c.ticker);
-                    setSearch("");
-                  }}
-                  className={cn(
-                    "rounded-xl border px-2.5 py-1.5 font-mono text-xs transition-colors",
-                    selected === c.ticker ? "border-capital-400/50 bg-capital-400/10 text-capital-200" : "border-white/10 text-white/60 hover:border-white/20",
-                  )}
-                >
-                  {c.ticker}
-                </button>
-              ))}
-            </div>
+
+            {search.trim() ? (
+              <div className="mb-4 max-h-56 space-y-1 overflow-y-auto no-scrollbar">
+                {searching && results.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-white/40">Searching the market...</p>
+                ) : results.length > 0 ? (
+                  results.map((r) => (
+                    <button
+                      key={r.symbol}
+                      onClick={() => pickSymbol(r.symbol, r.description)}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/8 px-3 py-2 text-left transition-colors hover:border-capital-400/40 hover:bg-white/[0.03]"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-mono text-sm font-semibold text-white">{r.symbol}</span>
+                        <span className="ml-2 truncate text-xs text-white/45">{r.description}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-capital-300">Trade</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-2 py-2 text-xs text-white/40">No matches for &ldquo;{search}&rdquo;.</p>
+                )}
+              </div>
+            ) : (
+              <div className="mb-4">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/35">Popular</p>
+                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto no-scrollbar">
+                  {tickerCatalog.map((c) => (
+                    <button
+                      key={c.ticker}
+                      onClick={() => pickSymbol(c.ticker, c.name)}
+                      className={cn(
+                        "rounded-xl border px-2.5 py-1.5 font-mono text-xs transition-colors",
+                        selected === c.ticker ? "border-capital-400/50 bg-capital-400/10 text-capital-200" : "border-white/10 text-white/60 hover:border-white/20",
+                      )}
+                    >
+                      {c.ticker}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="rounded-2xl bg-white/[0.03] p-4">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="min-w-0">
                   <p className="font-display text-lg font-bold text-white">{selected.toUpperCase()}</p>
-                  <p className="text-xs text-white/45">{selectedMeta?.name ?? "Equity"}</p>
+                  <p className="truncate text-xs text-white/45">{selectedDisplayName || "Equity"}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-display text-xl font-bold text-white">

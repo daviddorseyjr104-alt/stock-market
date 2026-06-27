@@ -102,3 +102,44 @@ export async function getQuotes(tickers: string[]): Promise<Record<string, Quote
 }
 
 export const isMarketLive = () => Boolean(process.env.FINNHUB_API_KEY);
+
+// ── Symbol search ───────────────────────────────────────────────────────────
+export interface SymbolResult {
+  symbol: string;
+  description: string;
+}
+
+/** Search real tradable US symbols by ticker or company name. */
+export async function searchSymbols(q: string): Promise<SymbolResult[]> {
+  const query = q.trim();
+  if (!query) return [];
+  const token = process.env.FINNHUB_API_KEY;
+
+  // No key → search the curated catalog so the UX still works.
+  if (!token) {
+    const { tickerCatalog } = await import("@/lib/data/portfolio");
+    const ql = query.toLowerCase();
+    return tickerCatalog
+      .filter((c) => (c.ticker + c.name).toLowerCase().includes(ql))
+      .slice(0, 10)
+      .map((c) => ({ symbol: c.ticker, description: c.name }));
+  }
+
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${token}`,
+      { next: { revalidate: 3600 } },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      result?: { symbol: string; description: string; type?: string }[];
+    };
+    return (data.result ?? [])
+      // US common stocks / ETFs only — drop foreign/OTC dotted symbols.
+      .filter((r) => r.symbol && !r.symbol.includes(".") && !r.symbol.includes(":"))
+      .slice(0, 10)
+      .map((r) => ({ symbol: r.symbol, description: r.description || r.symbol }));
+  } catch {
+    return [];
+  }
+}
