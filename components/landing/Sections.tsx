@@ -39,7 +39,7 @@ function Heading({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Product preview — feature bento ──────────────────────────────────────────
+// ── Product preview, feature bento ──────────────────────────────────────────
 export function ProductPreview() {
   const features = [
     { icon: BookOpen, title: "Learn", text: "20 student-native lessons that explain the market through your real money.", tone: "text-capital-300" },
@@ -135,9 +135,9 @@ export function Problem() {
 // ── Why students need a different app ────────────────────────────────────────
 export function WhyDifferent() {
   const principles = [
-    { n: "01", title: "Networks before capital", text: "Students may not have money yet — but they have campuses, clubs, and classmates. We grow through identity, not ad spend." },
+    { n: "01", title: "Networks before capital", text: "Students may not have money yet, but they have campuses, clubs, and classmates. We grow through identity, not ad spend." },
     { n: "02", title: "Every school is a community", text: "Each campus becomes its own financial learning network, complete with rank, rivalry, and pride." },
-    { n: "03", title: "Education that feels personal", text: "Every lesson is framed through aid, rent, internships, and first paychecks — the money students actually touch." },
+    { n: "03", title: "Education that feels personal", text: "Every lesson is framed through aid, rent, internships, and first paychecks, the money students actually touch." },
     { n: "04", title: "Understandable, never intimidating", text: "Robinhood-level simplicity meets Khan Academy clarity. No jargon walls, no gatekeeping." },
   ];
   return (
@@ -243,7 +243,7 @@ export function CampusNetwork() {
 // ── Learning system ──────────────────────────────────────────────────────────
 export function LearningSystem() {
   const modules = [
-    { letter: "A", title: "Start Here", text: "Investing, risk, and compounding — from zero." },
+    { letter: "A", title: "Start Here", text: "Investing, risk, and compounding, from zero." },
     { letter: "B", title: "Money Foundation", text: "Budgeting, debt, credit, and income." },
     { letter: "C", title: "Market Basics", text: "Stocks, ETFs, index funds, bonds." },
     { letter: "D", title: "Build Wealth Early", text: "Roth IRAs, automation, dollar-cost averaging." },
@@ -337,7 +337,7 @@ export function SimulatorSection() {
           <SectionLabel>
             <TrendingUp className="h-3.5 w-3.5" /> Portfolio simulator
           </SectionLabel>
-          <Heading>Learn by building — with $10,000 that isn&apos;t real.</Heading>
+          <Heading>Learn by building, with $10,000 that isn&apos;t real.</Heading>
           <p className="mt-4 text-white/55">
             Add stocks, ETFs, index funds, and bonds. Get a live risk score, a
             diversification score, and a student-friendly recommendation tied to a
@@ -415,7 +415,7 @@ export function CoachSection() {
             is a guarantee.
           </p>
           <p className="mt-4 text-xs text-white/40">
-            Works offline with a built-in knowledge engine — and plugs into
+            Works offline with a built-in knowledge engine, and plugs into
             OpenAI or Claude when you add a key.
           </p>
         </Reveal>
@@ -430,7 +430,7 @@ export function CoachSection() {
                   <Bot className="h-4 w-4 text-ink-950" />
                 </div>
                 <div className="rounded-2xl rounded-bl-md bg-capital-400/[0.06] px-4 py-3 text-sm leading-relaxed text-white/80">
-                  Yes — $50 is a great start once two things are covered: no
+                  Yes, $50 is a great start once two things are covered: no
                   high-interest debt, and a small emergency cushion. Then
                   fractional shares let you own a slice of hundreds of companies.
                 </div>
@@ -457,7 +457,7 @@ export function CoachSection() {
 export function VisionSection() {
   const items = [
     { icon: GraduationCap, title: "University partnerships", text: "White-labeled financial literacy for campuses and first-year programs." },
-    { icon: Megaphone, title: "Sponsored learning", text: "Brands fund lessons and challenges — students get free education." },
+    { icon: Megaphone, title: "Sponsored learning", text: "Brands fund lessons and challenges. Students get free education." },
     { icon: Building2, title: "Recruiting pipeline", text: "Finance employers meet financially-literate talent, early." },
     { icon: Wallet, title: "Premium subscriptions", text: "Deeper simulators, analytics, and career prep for power users." },
     { icon: Crown, title: "Campus ambassadors", text: "Student leaders grow their school's community and earn status." },
@@ -469,7 +469,7 @@ export function VisionSection() {
         <SectionLabel>The business</SectionLabel>
         <Heading>A network this loyal becomes a category-defining company.</Heading>
         <p className="mt-4 text-white/55">
-          Education-first and student-loved — with six revenue paths that never
+          Education-first and student-loved, with six revenue paths that never
           compromise the mission.
         </p>
       </Reveal>
@@ -507,7 +507,7 @@ export function FinalCTA() {
             next generation.
           </h2>
           <p className="mx-auto mt-5 max-w-xl text-white/55">
-            Learn the market through the life you actually live — internships,
+            Learn the market through the life you actually live, internships,
             rent, aid, side hustles, and your first real paycheck.
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">

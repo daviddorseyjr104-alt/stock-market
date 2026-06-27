@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────────────────────────
-// Campus Capital — shared domain types
+// Campus Capital, shared domain types
 // Mirrors the Supabase schema in /supabase/schema.sql
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ export type RiskLabel = "Low" | "Medium" | "High";
 
 /**
  * A held position in the paper-trading simulator. Real shares bought at live
- * prices with fake money — value is shares × live price, P/L vs avgCost.
+ * prices with fake money, value is shares × live price, P/L vs avgCost.
  */
 export interface Position {
   id: string;

@@ -10,7 +10,7 @@ export function LogoMark({ className }: { className?: string }) {
       )}
     >
       <svg viewBox="0 0 24 24" fill="none" className="h-[60%] w-[60%]">
-        {/* Upward "capital growth" mark — a stylized C + rising bars */}
+        {/* Upward "capital growth" mark, a stylized C + rising bars */}
         <path
           d="M6 16.5L10 12L13.5 14.5L18.5 8"
           stroke="#05060a"

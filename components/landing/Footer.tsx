@@ -68,7 +68,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-4 text-xs leading-relaxed text-white/40">
-          <strong className="text-white/55">Educational only — not financial advice.</strong>{" "}
+          <strong className="text-white/55">Educational only, not financial advice.</strong>{" "}
           Campus Capital is an educational platform. It involves no real money and
           no real trading. All portfolios are simulated. Nothing here is a
           recommendation to buy or sell any security. Students should always do

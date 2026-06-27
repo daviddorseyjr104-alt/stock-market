@@ -26,12 +26,12 @@ export function nextStreak(current: number, lastActive: string | null): number {
   const y = new Date();
   y.setDate(y.getDate() - 1);
   if (lastActive === dateKey(y)) return current + 1; // consecutive day
-  return 1; // streak broken — restart
+  return 1; // streak broken, restart
 }
 
 /**
  * Recomputes the full set of earned badge ids from the user's real state.
- * This is the single source of truth for badges — no hardcoded awards.
+ * This is the single source of truth for badges, no hardcoded awards.
  */
 export function computeBadges(profile: Profile, positions: Position[]): string[] {
   const done = new Set(profile.completedLessons);

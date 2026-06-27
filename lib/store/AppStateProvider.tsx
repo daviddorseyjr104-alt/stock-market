@@ -37,7 +37,7 @@ import {
 } from "./progression";
 import { getRepository, type Snapshot } from "./repository";
 
-// ── Default (demo) snapshot — deterministic, SSR-safe ──────────────────────
+// ── Default (demo) snapshot, deterministic, SSR-safe ──────────────────────
 function demoSnapshot(): Snapshot {
   return {
     v: 1,
@@ -184,7 +184,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         investingLevel: input.investingLevel,
         goal: input.goal,
         interests: input.interests,
-        bio: "New to Campus Capital — learning to build wealth before I have any. 🌱",
+        bio: "New to Campus Capital, learning to build wealth before I have any. 🌱",
         level: 1,
         xp: 0,
         streak: 0,

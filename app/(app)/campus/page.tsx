@@ -61,7 +61,7 @@ export default function CampusPage() {
     "My Campus": {
       title: "Your campus is quiet",
       description:
-        "No posts from your school yet. Start the conversation — ask a money question or share what you just learned.",
+        "No posts from your school yet. Start the conversation, ask a money question or share what you just learned.",
     },
     Following: {
       title: "Nothing from your circle yet",
@@ -83,7 +83,7 @@ export default function CampusPage() {
     <div>
       <PageHeader
         title="Campus"
-        subtitle="Your money-learning network — questions, wins, and what students are figuring out together."
+        subtitle="Your money-learning network, questions, wins, and what students are figuring out together."
       />
 
       {/* Feed tabs (segmented control) */}
@@ -199,7 +199,7 @@ export default function CampusPage() {
                   You&apos;re on a {profile.streak}-day streak
                 </p>
                 <p className="mt-0.5 text-xs text-white/50">
-                  Keep it alive — post a lesson insight to share what clicked
+                  Keep it alive, post a lesson insight to share what clicked
                   today.
                 </p>
                 <Link

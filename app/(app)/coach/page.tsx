@@ -29,8 +29,8 @@ const WELCOME: ChatMessage = {
   id: "welcome",
   role: "coach",
   answer: [
-    "Hey — I'm Capital Coach, your AI money tutor. 👋",
-    "Ask me anything about investing, budgeting, Roth IRAs, or what to do with your first paycheck — in plain student language. I'll keep it simple and point you to a lesson when it helps.",
+    "Hey, I'm Capital Coach, your AI money tutor. 👋",
+    "Ask me anything about investing, budgeting, Roth IRAs, or what to do with your first paycheck, in plain student language. I'll keep it simple and point you to a lesson when it helps.",
     "Tap a question below to get started, or just type your own.",
   ],
 };
@@ -91,7 +91,7 @@ export default function CoachPage() {
           role: "coach",
           error: true,
           answer: [
-            "Hmm — I couldn't reach the coach just now. That's on me, not you.",
+            "Hmm, I couldn't reach the coach just now. That's on me, not you.",
             "Give it another try in a moment, or pick one of the suggested questions.",
           ],
         },
@@ -119,7 +119,7 @@ export default function CoachPage() {
     <div className="flex h-[calc(100vh-9rem)] min-h-[34rem] flex-col">
       <PageHeader
         title="Capital Coach"
-        subtitle="Ask anything about money — in plain student language."
+        subtitle="Ask anything about money, in plain student language."
         action={
           <Pill tone="violet">
             <Sparkles className="h-3.5 w-3.5" />
@@ -133,7 +133,7 @@ export default function CoachPage() {
           Educational, not financial advice.
         </strong>{" "}
         Capital Coach explains concepts in student-friendly language to help you
-        learn. It never gives personalized investment advice — always do your own
+        learn. It never gives personalized investment advice, always do your own
         research before investing real money.
       </Disclaimer>
 
@@ -203,7 +203,7 @@ export default function CoachPage() {
                   }
                 }}
                 rows={1}
-                placeholder="Ask Capital Coach anything about money…"
+                placeholder="Ask Capital Coach anything about money..."
                 aria-label="Ask Capital Coach a question"
                 className="max-h-32 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white placeholder:text-white/35 focus:border-capital-400/40 focus:outline-none focus:ring-focus"
               />
@@ -233,10 +233,9 @@ export default function CoachPage() {
 function UserBubble({ text }: { text: string }) {
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       className="flex justify-end"
     >
       <div className="glass-strong max-w-[85%] rounded-3xl rounded-br-lg px-4 py-3 text-sm leading-relaxed text-white sm:max-w-[75%]">
@@ -255,10 +254,9 @@ function CoachBubble({
 }) {
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
       className="flex items-start gap-3"
     >
       <BotAvatar />

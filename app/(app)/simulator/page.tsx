@@ -118,7 +118,7 @@ export default function SimulatorPage() {
     <div className="space-y-6">
       <PageHeader
         title="Trading Simulator"
-        subtitle="Buy and sell real tickers at live market prices — with $10,000 of fake money. Make every mistake here; it's free."
+        subtitle="Buy and sell real tickers at live market prices, with $10,000 of fake money. Make every mistake here; it's free."
         action={
           <Pill tone={live ? "capital" : "default"}>
             <Radio className={cn("h-3.5 w-3.5", live && "animate-pulse")} />
@@ -179,7 +179,7 @@ export default function SimulatorPage() {
               <EmptyState
                 icon={<PieIcon className="h-7 w-7" />}
                 title="No positions yet"
-                description="Buy your first position from the trade ticket — a broad ETF like VTI is a classic first move."
+                description="Buy your first position from the trade ticket, a broad ETF like VTI is a classic first move."
                 action={<Button onClick={() => setSelected("VTI")}>Pick VTI to start</Button>}
               />
             ) : (
@@ -268,7 +268,7 @@ export default function SimulatorPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value.toUpperCase())}
-                placeholder="Search ticker (VTI, AAPL…)"
+                placeholder="Search ticker (VTI, AAPL...)"
                 className="w-full bg-transparent py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none"
               />
             </div>
@@ -298,7 +298,7 @@ export default function SimulatorPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-display text-xl font-bold text-white">
-                    {loading && !selectedQuote ? "…" : formatCurrency(selectedPrice, { maximumFractionDigits: 2 })}
+                    {loading && !selectedQuote ? "..." : formatCurrency(selectedPrice, { maximumFractionDigits: 2 })}
                   </p>
                   {selectedQuote && (
                     <p className={cn("inline-flex items-center gap-1 text-xs", selectedQuote.changePct >= 0 ? "text-capital-300" : "text-rose-400")}>

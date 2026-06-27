@@ -26,7 +26,7 @@ export default function AppError({
       </h1>
       <p className="mt-2 max-w-sm text-sm text-white/55">
         An unexpected error occurred while loading this section. Your progress is
-        saved — try again.
+        saved, try again.
       </p>
       {error.digest && (
         <p className="mt-2 font-mono text-xs text-white/30">ref: {error.digest}</p>

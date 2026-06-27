@@ -58,7 +58,7 @@ function formatValue(xp: number, unit?: string) {
 }
 
 /**
- * Presentational leaderboard. Stateless — pass in any LeaderRow[] and an
+ * Presentational leaderboard. Stateless, pass in any LeaderRow[] and an
  * optional unit label for the value column ("XP", "days", "%", "% return").
  */
 export function LeaderRows({

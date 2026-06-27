@@ -33,7 +33,7 @@ export function AppGate({ children }: { children: React.ReactNode }) {
           <LogoMark className="h-12 w-12 animate-pulse-glow" />
           <div className="flex items-center gap-2 text-sm text-white/40">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {hydrated ? "Redirecting to sign in…" : "Loading your campus…"}
+            {hydrated ? "Redirecting to sign in..." : "Loading your campus..."}
           </div>
         </div>
       )}

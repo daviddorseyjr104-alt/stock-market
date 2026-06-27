@@ -280,7 +280,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-white/40">{w.name}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-white">{q ? formatCurrency(q.price, { maximumFractionDigits: 2 }) : "…"}</p>
+                      <p className="text-sm text-white">{q ? formatCurrency(q.price, { maximumFractionDigits: 2 }) : "..."}</p>
                       {q && (
                         <p className={cn("text-xs font-medium", q.changePct >= 0 ? "text-capital-300" : "text-rose-400")}>
                           {formatPercent(q.changePct)}

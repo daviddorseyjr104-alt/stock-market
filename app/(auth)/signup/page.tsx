@@ -320,7 +320,7 @@ function SignupInner() {
 
       {!isSupabaseConfigured && step === 1 && (
         <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-xs text-white/50">
-          Running in <strong className="text-capital-300">demo mode</strong> — your
+          Running in <strong className="text-capital-300">demo mode</strong>, your
           account is created locally so you can explore the full product instantly.
         </div>
       )}
@@ -344,7 +344,7 @@ function SignupInner() {
           <Button size="lg" className="flex-1" disabled={!canNext || loading} onClick={finish}>
             {loading ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Creating your account…
+                <Loader2 className="h-4 w-4 animate-spin" /> Creating your account...
               </>
             ) : (
               <>
@@ -405,7 +405,7 @@ function Input({
 
 export default function SignupPage() {
   return (
-    <Suspense fallback={<div className="text-white/40">Loading…</div>}>
+    <Suspense fallback={<div className="text-white/40">Loading...</div>}>
       <SignupInner />
     </Suspense>
   );

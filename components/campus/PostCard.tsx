@@ -198,7 +198,7 @@ export function PostCard({ post }: { post: Post }) {
             </ul>
           ) : (
             <p className="text-sm text-white/40">
-              No comments yet — be the first to chime in.
+              No comments yet, be the first to chime in.
             </p>
           )}
 
@@ -219,7 +219,7 @@ export function PostCard({ post }: { post: Post }) {
                     submitComment();
                   }
                 }}
-                placeholder="Add a comment…"
+                placeholder="Add a comment..."
                 className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/35 focus:outline-none"
               />
               <button

@@ -20,7 +20,7 @@ const config: Config = {
           600: "#1f2433",
           500: "#2a3042",
         },
-        // Brand — electric capital green/teal + deep violet accent
+        // Brand: electric capital green/teal + deep violet accent
         capital: {
           50: "#e6fff4",
           100: "#b8ffe1",

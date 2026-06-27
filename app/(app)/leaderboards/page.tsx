@@ -58,7 +58,7 @@ const BOARDS: Board[] = [
     rows: studentXpLeaders,
     unit: "XP",
     highlightLabel: "You",
-    blurb: "The students putting in the reps. Learning compounds — just like money.",
+    blurb: "The students putting in the reps. Learning compounds, just like money.",
   },
   {
     key: "weekly",
@@ -90,7 +90,7 @@ const BOARDS: Board[] = [
     rows: simulatorLeaders,
     unit: "% return",
     highlightLabel: "You",
-    blurb: "Practice-portfolio results. Paper gains only — risk-free reps that build instinct.",
+    blurb: "Practice-portfolio results. Paper gains only, risk-free reps that build instinct.",
   },
 ];
 
@@ -149,12 +149,12 @@ export default function LeaderboardsPage() {
                     {ucla.delta >= 0
                       ? `Up ${formatPercent(ucla.delta)} this week and still climbing.`
                       : `Slipped ${Math.abs(ucla.delta)} spots this week.`}{" "}
-                    Every lesson you finish lifts the whole campus — you&apos;re
+                    Every lesson you finish lifts the whole campus, you&apos;re
                     {ucla.rank > 1
                       ? ` ${formatCompact(
                           (schoolLeaders[ucla.rank - 2]?.xp ?? ucla.xp) - ucla.xp,
                         )} XP from the school ahead.`
-                      : " holding the top spot — keep it locked in."}
+                      : " holding the top spot, keep it locked in."}
                   </p>
                 </div>
               </div>
@@ -167,7 +167,7 @@ export default function LeaderboardsPage() {
         </Reveal>
       )}
 
-      {/* Podium hero — top 3 schools */}
+      {/* Podium hero, top 3 schools */}
       <section>
         <div className="mb-4 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-capital-300" />
@@ -296,8 +296,7 @@ export default function LeaderboardsPage() {
       </Reveal>
 
       <p className="text-center text-xs text-white/35">
-        Ranks refresh weekly. Compete with your campus, learn at your own pace —
-        every spot is earned, never bought.
+        Ranks refresh weekly. Compete with your campus, learn at your own pace, every spot is earned, never bought.
       </p>
     </div>
   );

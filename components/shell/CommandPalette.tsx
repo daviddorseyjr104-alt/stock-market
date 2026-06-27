@@ -109,7 +109,7 @@ export function CommandPalette({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search lessons, students, schools, clubs…"
+            placeholder="Search lessons, students, schools, clubs..."
             className="w-full bg-transparent py-4 text-sm text-white placeholder:text-white/35 focus:outline-none"
           />
           <kbd className="rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] text-white/40">

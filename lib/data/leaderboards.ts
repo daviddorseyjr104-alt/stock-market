@@ -64,7 +64,7 @@ export const clubLeaders: LeaderRow[] = [...clubs]
     avatarColor: c.color,
   }));
 
-// Simulator performance — mock returns for a friendly competition.
+// Simulator performance, mock returns for a friendly competition.
 export const simulatorLeaders: LeaderRow[] = [
   { rank: 1, name: "Andre Diallo", meta: "Berkeley · Balanced Growth", xp: 142, delta: 1, avatarColor: "from-blue-500 to-capital-400" },
   { rank: 2, name: "Maya Lin", meta: "USC · Dividend Focus", xp: 128, delta: 2, avatarColor: "from-rose-400 to-fuchsia-500" },

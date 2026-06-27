@@ -78,9 +78,9 @@ export function Hero() {
             transition={{ duration: 0.7, delay: 0.12 }}
             className="mt-6 max-w-xl text-lg leading-relaxed text-white/60"
           >
-            Campus Capital teaches investing through student life — internships,
-            rent, financial aid, side hustles, scholarships, student debt, and
-            first paychecks.
+            Campus Capital teaches investing through the money students actually
+            touch: internships, rent, financial aid, side hustles, scholarships,
+            student debt, and first paychecks.
           </motion.p>
 
           <motion.div

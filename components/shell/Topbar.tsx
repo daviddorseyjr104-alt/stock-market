@@ -36,7 +36,7 @@ export function Topbar() {
             className="group flex flex-1 items-center gap-2.5 rounded-2xl border border-white/8 bg-white/[0.02] px-3.5 py-2 text-left transition-colors hover:border-white/15 sm:max-w-sm"
           >
             <Search className="h-4 w-4 text-white/40" />
-            <span className="flex-1 text-sm text-white/40">Search everything…</span>
+            <span className="flex-1 text-sm text-white/40">Search everything...</span>
             <kbd className="hidden items-center gap-0.5 rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] text-white/40 sm:flex">
               <Command className="h-2.5 w-2.5" />K
             </kbd>

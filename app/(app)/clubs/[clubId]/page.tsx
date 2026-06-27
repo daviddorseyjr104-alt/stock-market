@@ -32,7 +32,7 @@ export default function ClubDetailPage({
   const joined = currentUser.clubs.includes(club.id);
   const clubPosts = postsByClub(club.id);
 
-  // Members shown for this club — pull from the people directory.
+  // Members shown for this club, pull from the people directory.
   const members = people
     .filter((p) => p.id !== currentUser.id)
     .slice(0, 6);

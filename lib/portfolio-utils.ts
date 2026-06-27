@@ -50,7 +50,7 @@ export function totalGain(p: Portfolio, priceOf: PriceOf): { abs: number; pct: n
   return { abs, pct: p.startingBalance > 0 ? (abs / p.startingBalance) * 100 : 0 };
 }
 
-/** 0–100 weighted risk score across invested positions (by market value). */
+/** 0-100 weighted risk score across invested positions (by market value). */
 export function riskScore(positions: Position[], priceOf: PriceOf): number {
   const total = investedValue(positions, priceOf);
   if (total === 0) return 0;
@@ -67,7 +67,7 @@ export function riskLabel(score: number): "Conservative" | "Balanced" | "Aggress
   return "Aggressive";
 }
 
-/** 0–100 diversification score: spread across positions + asset-type variety. */
+/** 0-100 diversification score: spread across positions + asset-type variety. */
 export function diversificationScore(positions: Position[], priceOf: PriceOf): number {
   if (positions.length === 0) return 0;
   const total = investedValue(positions, priceOf) || 1;
@@ -105,7 +105,7 @@ export function learningRecommendation(
   const bigPct = big && invested > 0 ? (positionValue(big, priceOf) / invested) * 100 : 0;
 
   if (positions.length === 0)
-    return { text: "Start with a broad ETF like VTI — instant diversification in one buy.", lessonId: "etfs" };
+    return { text: "Start with a broad ETF like VTI, instant diversification in one buy.", lessonId: "etfs" };
   if (big && bigPct > 35 && big.assetType === "Stock")
     return { text: `${big.ticker} is a large single-stock bet. Learn why spreading out lowers risk.`, lessonId: "stocks" };
   if (div < 50)

@@ -7,9 +7,9 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 // The app's user-owned state is loaded/saved through a Repository. There are
 // two real implementations, selected at runtime by `isSupabaseConfigured`:
 //
-//   • LocalRepository    — localStorage snapshot. The working default; full
+//   • LocalRepository, localStorage snapshot. The working default; full
 //                          round-trip, survives refresh, zero backend.
-//   • SupabaseRepository — real upserts/selects against the schema in
+//   • SupabaseRepository, real upserts/selects against the schema in
 //                          /supabase/schema.sql, gated by RLS. Used the moment
 //                          NEXT_PUBLIC_SUPABASE_* keys are present.
 //
@@ -54,7 +54,7 @@ class LocalRepository implements Repository {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     } catch {
-      /* quota / privacy mode — non-fatal */
+      /* quota / privacy mode, non-fatal */
     }
   }
   async clear(): Promise<void> {

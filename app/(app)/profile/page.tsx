@@ -214,14 +214,14 @@ export default function ProfilePage() {
         />
         <StatCard
           label="Campus rank"
-          value={user.campusRank > 0 ? `#${user.campusRank}` : "—"}
+          value={user.campusRank > 0 ? `#${user.campusRank}` : ", "}
           sub={school ? school.shortName : "On campus"}
           icon={<Medal className="h-4 w-4" />}
           tone="violet"
         />
         <StatCard
           label="National rank"
-          value={user.nationalRank > 0 ? `#${user.nationalRank}` : "—"}
+          value={user.nationalRank > 0 ? `#${user.nationalRank}` : ", "}
           sub="Across all campuses"
           icon={<TrendingUp className="h-4 w-4" />}
           tone="rose"

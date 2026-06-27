@@ -1,6 +1,6 @@
 import type { AssetType, Portfolio, RiskLabel } from "@/lib/types";
 
-// Default sample paper-trading account. EDUCATIONAL SIMULATION — fake money,
+// Default sample paper-trading account. EDUCATIONAL SIMULATION, fake money,
 // real prices. avgCost values are illustrative entry prices; live value and
 // P/L are computed against real-time quotes at runtime.
 export const defaultPortfolio: Portfolio = {

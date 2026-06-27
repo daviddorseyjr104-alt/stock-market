@@ -111,13 +111,13 @@ export function LessonQuiz({
             <h3 className="font-display text-2xl font-bold tracking-tight text-white">
               {earnedXp > 0
                 ? `Quiz complete! +${earnedXp} XP earned 🎉`
-                : "Quiz complete — lesson reviewed ✅"}
+                : "Quiz complete, lesson reviewed ✅"}
             </h3>
             <p className="mt-1.5 text-sm text-white/60">
               {reward?.alreadyDone
-                ? "You'd already completed this lesson, so no new XP — but great refresher."
+                ? "You'd already completed this lesson, so no new XP, but great refresher."
                 : perfect
-                  ? "Flawless run — you nailed every question."
+                  ? "Flawless run, you nailed every question."
                   : `You got ${correctCount} of ${total} right. Review and run it back to lock it in.`}
             </p>
           </div>

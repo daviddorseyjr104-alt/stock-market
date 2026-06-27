@@ -190,7 +190,7 @@ export default function LessonPage({
           </p>
           <p className="max-w-sm text-sm text-white/55">
             That&apos;s every lesson across all five modules. Time to put it into
-            practice — and keep that streak alive.
+            practice, and keep that streak alive.
           </p>
           <Button href="/learn" variant="secondary" size="md" className="mt-1">
             <ArrowLeft className="h-4 w-4" />

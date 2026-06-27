@@ -64,7 +64,7 @@ export default function LearnPage() {
     <div className="space-y-10">
       <PageHeader
         title="Learning Hub"
-        subtitle="Bite-sized lessons that turn real student money — aid, jobs, rent, internships — into investing instincts."
+        subtitle="Bite-sized lessons that turn real student money, aid, jobs, rent, internships, into investing instincts."
         action={
           <div className="flex items-center gap-2.5">
             <Pill tone="amber" className="px-3 py-1">
@@ -311,7 +311,7 @@ export default function LearnPage() {
           <Sparkles className="h-6 w-6 text-capital-300" />
           <p className="max-w-md text-sm text-white/55">
             New lessons drop every week. Keep your streak alive and you&apos;ll
-            outpace investors twice your age — all before your first real dollar.
+            outpace investors twice your age, all before your first real dollar.
           </p>
         </Card>
       </Reveal>

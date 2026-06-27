@@ -18,11 +18,11 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   title: {
-    default: "Campus Capital — Investing education built for students",
+    default: "Campus Capital, Investing education built for students",
     template: "%s · Campus Capital",
   },
   description:
-    "Campus Capital teaches investing through student life — internships, rent, financial aid, side hustles, scholarships, student debt, and first paychecks. Learn the market through the life you actually live.",
+    "Campus Capital teaches investing through student life, internships, rent, financial aid, side hustles, scholarships, student debt, and first paychecks. Learn the market through the life you actually live.",
   keywords: [
     "investing for students",
     "college investing",

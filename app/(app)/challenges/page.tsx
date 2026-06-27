@@ -148,7 +148,7 @@ export default function ChallengesPage() {
         subtitle="Weekly missions that turn learning into momentum."
       />
 
-      {/* Active challenge — featured */}
+      {/* Active challenge, featured */}
       {featured && (
         <Card glow className="mb-7 overflow-hidden">
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">

@@ -3,7 +3,7 @@
 //
 // Returns LIVE quotes from Finnhub when FINNHUB_API_KEY is set; otherwise a
 // deterministic, realistic mock so the simulator works with zero config.
-// Educational paper-trading only — these prices drive a SIMULATED portfolio
+// Educational paper-trading only, these prices drive a SIMULATED portfolio
 // with fake money. No real orders are ever placed.
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ function mockQuote(ticker: string): Quote {
   if (t === "CASH") {
     return { ticker: t, price: 1, change: 0, changePct: 0, prevClose: 1, live: false };
   }
-  // Base price 20–600, daily change -3%..+3% that shifts each day.
+  // Base price 20-600, daily change -3%..+3% that shifts each day.
   const base = 20 + hash01(t) * 580;
   const day = Math.floor(Date.now() / 86_400_000);
   const changePct = (hash01(t, day) - 0.5) * 6;

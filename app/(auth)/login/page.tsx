@@ -25,7 +25,7 @@ export default function LoginPage() {
     const supabase = createClient();
     if (supabase) {
       // Try real Supabase auth. If it fails (e.g. no account yet, or the
-      // database schema isn't applied), don't dead-end the user — fall through
+      // database schema isn't applied), don't dead-end the user, fall through
       // to the explorable demo session. New accounts are created via /signup.
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error && !/invalid login credentials|email not confirmed/i.test(error.message)) {
@@ -34,7 +34,7 @@ export default function LoginPage() {
         return;
       }
     } else {
-      // Demo mode — no Supabase configured. Continue to the product.
+      // Demo mode, no Supabase configured. Continue to the product.
       await new Promise((r) => setTimeout(r, 650));
     }
     loginAsDemo();
@@ -95,7 +95,7 @@ export default function LoginPage() {
         <Button type="submit" size="lg" className="w-full" disabled={loading}>
           {loading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Signing in…
+              <Loader2 className="h-4 w-4 animate-spin" /> Signing in...
             </>
           ) : (
             <>
