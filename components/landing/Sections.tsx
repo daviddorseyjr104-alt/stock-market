@@ -22,6 +22,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
 import { schools } from "@/lib/data/schools";
 import { lessons } from "@/lib/data/lessons";
+import { CoachDemo } from "./CoachDemo";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -397,11 +398,6 @@ export function LeaderboardSection() {
 
 // ── AI tutor ─────────────────────────────────────────────────────────────────
 export function CoachSection() {
-  const qs = [
-    "I only have $50. Should I invest?",
-    "What should I do with internship money?",
-    "How do Roth IRAs work?",
-  ];
   return (
     <section id="coach" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-20 sm:px-6">
       <div className="grid items-center gap-12 lg:grid-cols-2">
@@ -415,39 +411,12 @@ export function CoachSection() {
             simply, recommends the right lesson next, and never pretends a guess
             is a guarantee.
           </p>
-          <p className="mt-4 text-xs text-white/40">
-            Works offline with a built-in knowledge engine, and plugs into
-            OpenAI or Claude when you add a key.
+          <p className="mt-4 text-sm font-medium text-capital-300">
+            Try it right here, ask a real question. 👉
           </p>
         </Reveal>
         <Reveal delay={0.1}>
-          <Card className="p-5">
-            <div className="space-y-3">
-              <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-white/8 px-4 py-2.5 text-sm text-white">
-                I only have $50. Should I invest?
-              </div>
-              <div className="flex max-w-[88%] gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-capital-gradient">
-                  <Bot className="h-4 w-4 text-ink-950" />
-                </div>
-                <div className="rounded-2xl rounded-bl-md bg-capital-400/[0.06] px-4 py-3 text-sm leading-relaxed text-white/80">
-                  Yes, $50 is a great start once two things are covered: no
-                  high-interest debt, and a small emergency cushion. Then
-                  fractional shares let you own a slice of hundreds of companies.
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {qs.map((q) => (
-                <span
-                  key={q}
-                  className="rounded-full border border-white/8 bg-white/[0.02] px-3 py-1.5 text-xs text-white/55"
-                >
-                  {q}
-                </span>
-              ))}
-            </div>
-          </Card>
+          <CoachDemo />
         </Reveal>
       </div>
     </section>
