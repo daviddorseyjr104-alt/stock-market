@@ -43,8 +43,55 @@ import type { RiskLabel } from "@/lib/types";
 
 const CHART_COLORS = ["#39f5ac", "#7c5cff", "#38bdf8", "#fbbf24", "#fb7185", "#34d399", "#c084fc", "#60a5fa"];
 
+type RangeKey = "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL";
+const RANGES: { key: RangeKey; sub: string }[] = [
+  { key: "1D", sub: "today" },
+  { key: "1W", sub: "past week" },
+  { key: "1M", sub: "past month" },
+  { key: "3M", sub: "past 3 months" },
+  { key: "1Y", sub: "past year" },
+  { key: "ALL", sub: "all-time" },
+];
+
+interface Bar {
+  t: number;
+  c: number;
+}
+
+/** Reconstruct portfolio value over time from per-symbol price history. */
+function buildPortfolioSeries(
+  history: Record<string, Bar[]>,
+  positions: { ticker: string; shares: number; avgCost: number }[],
+  cash: number,
+): { t: number; v: number }[] {
+  if (positions.length === 0) return [];
+  const tset = new Set<number>();
+  for (const p of positions) for (const b of history[p.ticker.toUpperCase()] ?? []) tset.add(b.t);
+  const times = Array.from(tset).sort((a, b) => a - b);
+  if (times.length < 2) return [];
+  const ptr: Record<string, number> = {};
+  const cur: Record<string, number> = {};
+  for (const p of positions) {
+    ptr[p.ticker.toUpperCase()] = 0;
+    cur[p.ticker.toUpperCase()] = p.avgCost;
+  }
+  return times.map((t) => {
+    let v = cash;
+    for (const p of positions) {
+      const sym = p.ticker.toUpperCase();
+      const rows = history[sym] ?? [];
+      while (ptr[sym] < rows.length && rows[ptr[sym]].t <= t) {
+        cur[sym] = rows[ptr[sym]].c;
+        ptr[sym]++;
+      }
+      v += p.shares * cur[sym];
+    }
+    return { t, v: Math.round(v * 100) / 100 };
+  });
+}
+
 export default function SimulatorPage() {
-  const { portfolio, equityHistory, buy, sell, resetPortfolio, recordEquity } = useAppState();
+  const { portfolio, buy, sell, resetPortfolio, recordEquity } = useAppState();
 
   const [selected, setSelected] = useState(tickerCatalog[0].ticker);
   const [selectedName, setSelectedName] = useState<string>(tickerCatalog[0].name);
@@ -54,6 +101,8 @@ export default function SimulatorPage() {
   const [mode, setMode] = useState<"shares" | "dollars">("dollars");
   const [amount, setAmount] = useState("250");
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  const [range, setRange] = useState<RangeKey>("1M");
+  const [history, setHistory] = useState<Record<string, Bar[]>>({});
 
   // Live symbol search (debounced) — trade ANY real US stock or ETF.
   useEffect(() => {
@@ -107,38 +156,66 @@ export default function SimulatorPage() {
   const biggest = biggestPosition(portfolio.positions, priceOf);
   const rec = learningRecommendation(portfolio.positions, priceOf);
 
-  // Record the account value over time so the chart shows real growth.
+  // Record the account value over time (kept for long-term continuity).
   useEffect(() => {
     if (!loading && value > 0) recordEquity(value);
   }, [value, loading, recordEquity]);
 
-  // Build the chart line. When there's little recorded history yet, reconstruct
-  // a real baseline from today's actual prices (yesterday's close → open → now)
-  // so the curve is always there, then live snapshots extend it over time.
   const round2 = (x: number) => Math.round(x * 100) / 100;
-  const chartSeries = useMemo(() => {
+
+  // Fetch real price history for the selected range whenever it (or the
+  // holdings) change, then reconstruct the portfolio value over time.
+  const posTickers = portfolio.positions.map((p) => p.ticker).join(",");
+  useEffect(() => {
+    if (!posTickers) {
+      setHistory({});
+      return;
+    }
+    let alive = true;
+    fetch(`/api/history?symbols=${encodeURIComponent(posTickers)}&range=${range}`)
+      .then((r) => r.json())
+      .then((d: { history: Record<string, Bar[]> }) => {
+        if (alive) setHistory(d.history ?? {});
+      })
+      .catch(() => alive && setHistory({}));
+    return () => {
+      alive = false;
+    };
+  }, [posTickers, range]);
+
+  // Fallback curve from live quotes (yesterday's close → open → now) for when
+  // history hasn't loaded yet.
+  const fallbackSeries = useMemo(() => {
     const now = Date.now();
-    const real = equityHistory.map((p) => ({ t: p.t, v: p.v }));
-    if (portfolio.positions.length === 0) return real;
+    if (portfolio.positions.length === 0) return [];
     const valWith = (pick: (q: { prevClose: number; open: number; price: number }) => number) =>
       portfolio.cash +
       portfolio.positions.reduce((s, p) => {
         const q = quotes[p.ticker.toUpperCase()];
         return s + p.shares * (q ? pick(q) : p.avgCost);
       }, 0);
-    const firstRealT = real[0]?.t ?? Infinity;
-    const baseline = [
+    return [
       { t: now - 86_400_000, v: round2(valWith((q) => q.prevClose)) },
       { t: now - 23_400_000, v: round2(valWith((q) => q.open)) },
-    ].filter((b) => b.t < firstRealT);
-    const series = [...baseline, ...real];
-    const lastT = series[series.length - 1]?.t ?? 0;
-    if (now - lastT > 1000) series.push({ t: now, v: round2(value) });
-    return series;
-  }, [equityHistory, portfolio, quotes, value]);
+      { t: now, v: round2(value) },
+    ];
+  }, [portfolio, quotes, value]);
 
-  const trendUp = chartSeries.length < 2 || chartSeries[chartSeries.length - 1].v >= chartSeries[0].v;
-  const eqColor = trendUp ? "#39f5ac" : "#fb7185";
+  const equitySeries = useMemo(() => {
+    const hs = buildPortfolioSeries(history, portfolio.positions, portfolio.cash);
+    if (hs.length >= 2) {
+      const now = Date.now();
+      if (now - hs[hs.length - 1].t > 60_000) hs.push({ t: now, v: round2(value) });
+      return hs;
+    }
+    return fallbackSeries;
+  }, [history, portfolio, value, fallbackSeries]);
+
+  const rangeChange = equitySeries.length >= 2 ? value - equitySeries[0].v : gain.abs;
+  const rangePct =
+    equitySeries.length >= 2 && equitySeries[0].v > 0 ? (rangeChange / equitySeries[0].v) * 100 : gain.pct;
+  const rangeSub = RANGES.find((r) => r.key === range)?.sub ?? "";
+  const eqColor = rangeChange >= 0 ? "#39f5ac" : "#fb7185";
 
   const dayChange = portfolio.positions.reduce(
     (s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0),
@@ -206,20 +283,20 @@ export default function SimulatorPage() {
             <p className="font-display text-4xl font-bold tracking-tight text-white">
               {formatCurrency(value, { maximumFractionDigits: 2 })}
             </p>
-            <p className={cn("mt-1 text-sm font-semibold", gain.abs >= 0 ? "text-capital-300" : "text-rose-400")}>
-              {gain.abs >= 0 ? "▲" : "▼"} {formatCurrency(Math.abs(gain.abs))} ({formatPercent(gain.pct)})
-              <span className="text-white/40"> all-time</span>
-              <span className="ml-2 font-normal text-white/40">
-                {dayChange >= 0 ? "+" : ""}
-                {formatCurrency(dayChange)} today
-              </span>
+            <p className={cn("mt-1 text-sm font-semibold", rangeChange >= 0 ? "text-capital-300" : "text-rose-400")}>
+              {rangeChange >= 0 ? "▲" : "▼"} {formatCurrency(Math.abs(rangeChange))} ({formatPercent(rangePct)})
+              <span className="text-white/40"> {rangeSub}</span>
+            </p>
+            <p className="mt-0.5 text-xs text-white/35">
+              All-time {gain.abs >= 0 ? "+" : ""}
+              {formatCurrency(gain.abs)} ({formatPercent(gain.pct)})
             </p>
           </div>
         </div>
         <div className="mt-4 h-40 sm:h-48">
-          {chartSeries.length >= 2 ? (
+          {equitySeries.length >= 2 ? (
             <ResponsiveContainer>
-              <AreaChart data={chartSeries} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+              <AreaChart data={equitySeries} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={eqColor} stopOpacity={0.35} />
@@ -246,6 +323,26 @@ export default function SimulatorPage() {
               </p>
             </div>
           )}
+        </div>
+
+        {/* Time-range tabs */}
+        <div className="mt-3 flex items-center gap-1 border-t border-white/5 pt-3">
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRange(r.key)}
+              aria-pressed={range === r.key}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors sm:flex-none sm:px-4",
+                range === r.key
+                  ? "bg-white/10 text-white"
+                  : "text-white/45 hover:bg-white/5 hover:text-white",
+              )}
+            >
+              {r.key}
+            </button>
+          ))}
         </div>
       </Card>
 
