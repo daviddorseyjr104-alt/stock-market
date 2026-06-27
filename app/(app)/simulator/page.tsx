@@ -21,6 +21,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useAppState } from "@/lib/store";
+import { track } from "@/lib/analytics";
 import { useQuotes } from "@/lib/use-quotes";
 import { tickerCatalog, catalogByTicker } from "@/lib/data/portfolio";
 import {
@@ -135,9 +136,10 @@ export default function SimulatorPage() {
       shares: orderShares,
       price: selectedPrice,
     });
-    if (res.ok)
+    if (res.ok) {
       showFlash("ok", `Bought ${orderShares.toFixed(3)} ${selected.toUpperCase()} @ ${formatCurrency(selectedPrice, { maximumFractionDigits: 2 })}`);
-    else showFlash("err", res.reason ?? "Order failed.");
+      track("trade_executed", { ticker: selected.toUpperCase(), cost: Math.round(orderCost) });
+    } else showFlash("err", res.reason ?? "Order failed.");
   }
 
   const chartData = portfolio.positions

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Bot, Send, ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { track } from "@/lib/analytics";
 
 const SUGGESTIONS = [
   "I only have $50. Should I invest?",
@@ -49,6 +50,7 @@ export function CoachDemo() {
     setBusy(true);
     setInput("");
     setExchange({ q: question, answer: null });
+    track("coach_question", { source: "landing" });
     try {
       const res = await fetch("/api/coach", {
         method: "POST",

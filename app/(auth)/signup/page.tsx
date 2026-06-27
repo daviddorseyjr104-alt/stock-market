@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useAppState } from "@/lib/store";
+import { track } from "@/lib/analytics";
 import type { Goal, Interest, InvestingLevel, StudentType } from "@/lib/types";
 
 const studentTypes: StudentType[] = [
@@ -143,6 +144,7 @@ function SignupInner() {
       interests: picked,
       clubId: club,
     });
+    track("signup_completed", { school: schoolId, level });
     router.push("/dashboard");
   }
 

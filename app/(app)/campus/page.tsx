@@ -24,6 +24,7 @@ import {
   type FeedAuthor,
   type LeaderProfile,
 } from "@/lib/social";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { PostCategory } from "@/lib/types";
 
@@ -60,7 +61,10 @@ export default function CampusPage() {
 
   async function handlePost(body: string, category: PostCategory) {
     const created = await createPost({ body, category, author: me });
-    if (created) setFeed((f) => [created, ...f]);
+    if (created) {
+      setFeed((f) => [created, ...f]);
+      track("post_created", { category });
+    }
     setTab("My Campus");
   }
 

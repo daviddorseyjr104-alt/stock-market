@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { QuizQuestion } from "@/lib/types";
 import { useAppState, type LessonReward } from "@/lib/store";
 import { badgeById } from "@/lib/data/badges";
+import { track } from "@/lib/analytics";
 
 export function LessonQuiz({
   quiz,
@@ -66,8 +67,11 @@ export function LessonQuiz({
     } else {
       // Finishing the quiz is what actually completes the lesson: awards XP,
       // advances the streak, and recomputes badges in the persistent store.
-      setReward(completeLesson(lessonId));
+      const r = completeLesson(lessonId);
+      setReward(r);
       setDone(true);
+      track("quiz_finished", { lessonId, correct: correctCount, total });
+      if (!r.alreadyDone) track("lesson_completed", { lessonId, xp: r.xpGained });
     }
   }
 

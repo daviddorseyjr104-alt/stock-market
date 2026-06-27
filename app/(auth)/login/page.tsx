@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useAppState } from "@/lib/store";
+import { track } from "@/lib/analytics";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function LoginPage() {
       await new Promise((r) => setTimeout(r, 650));
     }
     loginAsDemo();
+    track("login_demo");
     router.push("/dashboard");
   }
 

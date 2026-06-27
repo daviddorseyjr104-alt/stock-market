@@ -3,6 +3,8 @@ import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 import { AppStateProvider } from "@/lib/store/AppStateProvider";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -68,6 +70,8 @@ export default function RootLayout({
       <body className="app-backdrop min-h-screen font-sans antialiased">
         <AppStateProvider>{children}</AppStateProvider>
         <ServiceWorkerRegister />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

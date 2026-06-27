@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { suggestedPrompts, type CoachReply } from "@/lib/coach";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
 type Role = "user" | "coach";
@@ -63,6 +64,7 @@ export default function CoachPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setThinking(true);
+    track("coach_question", { source: "coach_page" });
 
     try {
       const res = await fetch("/api/coach", {
