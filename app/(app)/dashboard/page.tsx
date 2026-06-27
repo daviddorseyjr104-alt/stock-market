@@ -48,6 +48,24 @@ function nextLesson(isLessonComplete: (id: string) => boolean) {
   return lessonById("portfolio-allocation")!;
 }
 
+// Real challenge progress derived from the signed-in user's state.
+const CHALLENGE_LESSON: Record<string, string> = {
+  "compound-5min": "compound-interest",
+  "roth-basics": "roth-ira",
+  "budget-builder-challenge": "budgeting-college",
+  "save-vs-invest": "saving-vs-investing",
+};
+function liveProgress(
+  id: string,
+  streak: number,
+  isLessonComplete: (id: string) => boolean,
+) {
+  if (id === "7-day-streak") return Math.min(100, Math.round((streak / 7) * 100));
+  const lesson = CHALLENGE_LESSON[id];
+  if (lesson) return isLessonComplete(lesson) ? 100 : 0;
+  return 0;
+}
+
 const WATCH = [
   { ticker: "VTI", name: "Total US Market" },
   { ticker: "VOO", name: "S&P 500 ETF" },
@@ -60,7 +78,15 @@ export default function DashboardPage() {
   const school = schoolById(profile.schoolId)!;
   const lesson = nextLesson(isLessonComplete);
   const lessonModule = modules.find((m) => m.id === lesson.moduleId);
-  const challenge = challenges.find((c) => c.progress > 0) ?? challenges[0];
+  const scoredChallenges = challenges.map((c) => ({
+    c,
+    p: liveProgress(c.id, profile.streak, isLessonComplete),
+  }));
+  const featured =
+    scoredChallenges.filter((x) => x.p < 100).sort((a, b) => b.p - a.p)[0] ??
+    scoredChallenges[0];
+  const challenge = featured.c;
+  const challengeProg = featured.p;
 
   const tickers = useMemo(
     () => Array.from(new Set([...portfolio.positions.map((p) => p.ticker), ...WATCH.map((w) => w.ticker)])),
@@ -239,12 +265,12 @@ export default function DashboardPage() {
             <h3 className="font-display font-semibold text-white">{challenge.title}</h3>
             <p className="mt-1 text-sm text-white/50">{challenge.goal}</p>
             <div className="mt-3 flex items-center justify-between text-xs text-white/45">
-              <span>{challenge.progress}% complete</span>
+              <span>{challengeProg}% complete</span>
               <span className="inline-flex items-center gap-1">
                 <Flame className="h-3 w-3 text-orange-400" /> {challenge.deadlineDays}d left
               </span>
             </div>
-            <ProgressBar value={challenge.progress} className="mt-2" />
+            <ProgressBar value={challengeProg} className="mt-2" />
             <Button href="/challenges" variant="outline" size="sm" className="mt-4 w-full">
               View challenges
             </Button>
