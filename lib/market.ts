@@ -13,6 +13,7 @@ export interface Quote {
   change: number; // absolute change today
   changePct: number; // percent change today
   prevClose: number;
+  open: number; // today's opening price
   live: boolean; // true if from a real data provider
 }
 
@@ -36,7 +37,7 @@ function hash01(s: string, salt = 0): number {
 function mockQuote(ticker: string): Quote {
   const t = ticker.toUpperCase();
   if (t === "CASH") {
-    return { ticker: t, price: 1, change: 0, changePct: 0, prevClose: 1, live: false };
+    return { ticker: t, price: 1, change: 0, changePct: 0, prevClose: 1, open: 1, live: false };
   }
   // Base price 20-600, daily change -3%..+3% that shifts each day.
   const base = 20 + hash01(t) * 580;
@@ -44,12 +45,15 @@ function mockQuote(ticker: string): Quote {
   const changePct = (hash01(t, day) - 0.5) * 6;
   const prevClose = Math.round(base * 100) / 100;
   const price = Math.round(prevClose * (1 + changePct / 100) * 100) / 100;
+  // Open somewhere between prevClose and current, for a believable intraday shape.
+  const open = Math.round((prevClose + (price - prevClose) * 0.45) * 100) / 100;
   return {
     ticker: t,
     price,
     change: Math.round((price - prevClose) * 100) / 100,
     changePct: Math.round(changePct * 100) / 100,
     prevClose,
+    open,
     live: false,
   };
 }
@@ -61,7 +65,7 @@ async function fetchFinnhub(ticker: string, token: string): Promise<Quote | null
       next: { revalidate: 15 },
     });
     if (!res.ok) return null;
-    const d = (await res.json()) as { c?: number; d?: number; dp?: number; pc?: number };
+    const d = (await res.json()) as { c?: number; d?: number; dp?: number; pc?: number; o?: number };
     if (!d || typeof d.c !== "number" || d.c === 0) return null; // 0 = unknown symbol
     return {
       ticker: ticker.toUpperCase(),
@@ -69,6 +73,7 @@ async function fetchFinnhub(ticker: string, token: string): Promise<Quote | null
       change: d.d ?? 0,
       changePct: d.dp ?? 0,
       prevClose: d.pc ?? d.c,
+      open: d.o ?? d.pc ?? d.c,
       live: true,
     };
   } catch {

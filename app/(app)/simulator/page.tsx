@@ -112,7 +112,33 @@ export default function SimulatorPage() {
     if (!loading && value > 0) recordEquity(value);
   }, [value, loading, recordEquity]);
 
-  const eqColor = gain.abs >= 0 ? "#39f5ac" : "#fb7185";
+  // Build the chart line. When there's little recorded history yet, reconstruct
+  // a real baseline from today's actual prices (yesterday's close → open → now)
+  // so the curve is always there, then live snapshots extend it over time.
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const chartSeries = useMemo(() => {
+    const now = Date.now();
+    const real = equityHistory.map((p) => ({ t: p.t, v: p.v }));
+    if (portfolio.positions.length === 0) return real;
+    const valWith = (pick: (q: { prevClose: number; open: number; price: number }) => number) =>
+      portfolio.cash +
+      portfolio.positions.reduce((s, p) => {
+        const q = quotes[p.ticker.toUpperCase()];
+        return s + p.shares * (q ? pick(q) : p.avgCost);
+      }, 0);
+    const firstRealT = real[0]?.t ?? Infinity;
+    const baseline = [
+      { t: now - 86_400_000, v: round2(valWith((q) => q.prevClose)) },
+      { t: now - 23_400_000, v: round2(valWith((q) => q.open)) },
+    ].filter((b) => b.t < firstRealT);
+    const series = [...baseline, ...real];
+    const lastT = series[series.length - 1]?.t ?? 0;
+    if (now - lastT > 1000) series.push({ t: now, v: round2(value) });
+    return series;
+  }, [equityHistory, portfolio, quotes, value]);
+
+  const trendUp = chartSeries.length < 2 || chartSeries[chartSeries.length - 1].v >= chartSeries[0].v;
+  const eqColor = trendUp ? "#39f5ac" : "#fb7185";
 
   const dayChange = portfolio.positions.reduce(
     (s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0),
@@ -191,9 +217,9 @@ export default function SimulatorPage() {
           </div>
         </div>
         <div className="mt-4 h-40 sm:h-48">
-          {equityHistory.length >= 2 ? (
+          {chartSeries.length >= 2 ? (
             <ResponsiveContainer>
-              <AreaChart data={equityHistory} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+              <AreaChart data={chartSeries} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={eqColor} stopOpacity={0.35} />
@@ -214,9 +240,9 @@ export default function SimulatorPage() {
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 text-center">
-              <p className="text-sm text-white/55">Your growth curve starts now.</p>
+              <p className="text-sm text-white/55">Buy a position to start your growth curve.</p>
               <p className="mt-1 max-w-xs text-xs text-white/35">
-                It fills in as prices move and you check back. Come back over the next few days to watch it climb.
+                Once you hold a stock or ETF, this chart tracks your portfolio&apos;s value in real time.
               </p>
             </div>
           )}
