@@ -21,7 +21,7 @@ import { ProgressBar } from "@/components/ui/Progress";
 import { Avatar } from "@/components/ui/Avatar";
 import { WelcomeHero } from "@/components/dashboard/WelcomeHero";
 import { schoolById, schools } from "@/lib/data/schools";
-import { getFeed, type FeedPost } from "@/lib/social";
+import { getFeed, getStudentLeaders, type FeedPost, type LeaderProfile } from "@/lib/social";
 import { modules } from "@/lib/data/modules";
 import { lessonsByModule, lessonById } from "@/lib/data/lessons";
 import { challenges } from "@/lib/data/challenges";
@@ -78,11 +78,18 @@ export default function DashboardPage() {
   const school = schoolById(profile.schoolId)!;
 
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [students, setStudents] = useState<LeaderProfile[]>([]);
   useEffect(() => {
     let alive = true;
     getFeed().then((p) => alive && setFeedPosts(p));
+    // Pull the live leaderboard now and refresh it on an interval so the
+    // campus / national rank stays current without a page reload.
+    const loadRanks = () => getStudentLeaders().then((s) => alive && setStudents(s));
+    loadRanks();
+    const id = setInterval(loadRanks, 60_000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
   }, []);
   const lesson = nextLesson(isLessonComplete);
@@ -110,8 +117,41 @@ export default function DashboardPage() {
   const change = portfolio.positions.reduce((s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0), 0);
   const rScore = riskScore(portfolio.positions, priceOf);
   const dScore = diversificationScore(portfolio.positions, priceOf);
-  const schoolRank =
-    [...schools].sort((a, b) => b.totalXp - a.totalXp).findIndex((s) => s.id === school.id) + 1;
+  // Live ranks computed from real student XP (with the signed-in user merged in),
+  // recomputed whenever the leaderboard refetches or the user earns XP.
+  const { campusRank, schoolRank } = useMemo(() => {
+    const me: LeaderProfile = {
+      id: profile.id,
+      fullName: profile.fullName,
+      avatarColor: profile.avatarColor,
+      xp: profile.xp,
+      streak: profile.streak,
+      schoolId: profile.schoolId,
+      major: profile.major,
+    };
+    const roster = students.some((s) => s.id === profile.id)
+      ? students.map((s) => (s.id === profile.id ? me : s))
+      : [...students, me];
+
+    // Campus rank: my position among students at my own school.
+    const campus = roster
+      .filter((p) => p.schoolId === profile.schoolId)
+      .sort((a, b) => b.xp - a.xp)
+      .findIndex((p) => p.id === profile.id) + 1;
+
+    // National rank: my school's position by total real student XP.
+    const agg: Record<string, number> = {};
+    for (const p of roster) {
+      if (!p.schoolId) continue;
+      agg[p.schoolId] = (agg[p.schoolId] ?? 0) + p.xp;
+    }
+    const national = schools
+      .map((s) => ({ id: s.id, xp: agg[s.id] ?? 0 }))
+      .sort((a, b) => b.xp - a.xp || a.id.localeCompare(b.id))
+      .findIndex((s) => s.id === school.id) + 1;
+
+    return { campusRank: campus, schoolRank: national };
+  }, [students, profile, school.id]);
   const feed = feedPosts
     .filter((p) => (p.schoolId ?? p.author.schoolId) === profile.schoolId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -252,7 +292,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-display text-4xl font-bold text-gradient-capital">
-                  {profile.campusRank > 0 ? `#${profile.campusRank}` : "Climbing"}
+                  {campusRank > 0 ? `#${campusRank}` : "Climbing"}
                 </div>
                 <p className="text-sm text-white/45">at {school.shortName}</p>
               </div>

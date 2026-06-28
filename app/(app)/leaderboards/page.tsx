@@ -36,10 +36,16 @@ export default function LeaderboardsPage() {
 
   useEffect(() => {
     let alive = true;
-    getStudentLeaders().then((s) => alive && setStudents(s));
-    getClubStats().then((c) => alive && setClubStats(c));
+    const load = () => {
+      getStudentLeaders().then((s) => alive && setStudents(s));
+      getClubStats().then((c) => alive && setClubStats(c));
+    };
+    load();
+    // Keep the boards live without a reload as students earn XP.
+    const id = setInterval(load, 45_000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
   }, []);
 
