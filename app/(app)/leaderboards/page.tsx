@@ -1,28 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Trophy,
-  TrendingUp,
-  Sparkles,
-  ArrowUpRight,
-  Crown,
-} from "lucide-react";
+import { Trophy, Sparkles, ArrowUpRight, Crown, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { Reveal } from "@/components/ui/Reveal";
 import { LeaderRows } from "@/components/leaderboards/LeaderboardTable";
-import { simulatorLeaders } from "@/lib/data/leaderboards";
 import { schools, schoolById } from "@/lib/data/schools";
 import { clubs } from "@/lib/data/clubs";
 import { useAppState } from "@/lib/store";
-import { getStudentLeaders, type LeaderProfile } from "@/lib/social";
-import { cn, formatCompact, formatPercent } from "@/lib/utils";
+import { getStudentLeaders, getClubStats, type LeaderProfile } from "@/lib/social";
+import { cn, formatCompact } from "@/lib/utils";
 import type { LeaderRow } from "@/lib/types";
 
-type BoardKey = "campus" | "student" | "weekly" | "clubs" | "streaks" | "simulator";
+type BoardKey = "campus" | "student" | "clubs" | "streaks";
 
 interface Board {
   key: BoardKey;
@@ -33,27 +26,24 @@ interface Board {
   blurb: string;
 }
 
-function emojiForSchool(name: string) {
-  return schools.find((s) => s.name === name || s.shortName === name)?.emoji ?? "🎓";
-}
-
 const PODIUM_ORDER = [2, 1, 3]; // visual left-to-right: 2nd, 1st, 3rd
 
 export default function LeaderboardsPage() {
   const { profile } = useAppState();
   const [active, setActive] = useState<BoardKey>("campus");
   const [students, setStudents] = useState<LeaderProfile[]>([]);
+  const [clubStats, setClubStats] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let alive = true;
     getStudentLeaders().then((s) => alive && setStudents(s));
+    getClubStats().then((c) => alive && setClubStats(c));
     return () => {
       alive = false;
     };
   }, []);
 
-  // Roster = real students from the database, with the signed-in user merged in
-  // using their live xp/streak (so they see themselves, never a stranger).
+  // Real students from the database, with the signed-in user merged in.
   const roster: LeaderProfile[] = useMemo(() => {
     const me: LeaderProfile = {
       id: profile.id,
@@ -101,76 +91,76 @@ export default function LeaderboardsPage() {
     [roster, profile.id],
   );
 
-  const campusRows: LeaderRow[] = useMemo(
+  // Real campus XP = sum of every student's XP at that school.
+  const schoolAgg = useMemo(() => {
+    const m: Record<string, { xp: number; students: number }> = {};
+    for (const p of roster) {
+      if (!p.schoolId) continue;
+      (m[p.schoolId] ??= { xp: 0, students: 0 }).xp += p.xp;
+      m[p.schoolId].students += 1;
+    }
+    return m;
+  }, [roster]);
+
+  const campusData = useMemo(
     () =>
-      [...schools]
-        .sort((a, b) => b.totalXp - a.totalXp)
-        .map((s, i) => ({
-          rank: i + 1,
-          name: s.name,
-          meta: `${s.activeStudents.toLocaleString()} active · top: ${s.topStudent}`,
-          xp: s.totalXp,
-          delta: Math.round(s.weeklyGrowth),
-          avatarColor: s.color,
+      schools
+        .map((s) => ({
+          school: s,
+          xp: schoolAgg[s.id]?.xp ?? 0,
+          students: schoolAgg[s.id]?.students ?? 0,
           highlight: s.id === profile.schoolId,
-        })),
-    [profile.schoolId],
+        }))
+        .sort((a, b) => b.xp - a.xp || a.school.shortName.localeCompare(b.school.shortName)),
+    [schoolAgg, profile.schoolId],
   );
 
-  const weeklyRows: LeaderRow[] = useMemo(
+  const campusRows: LeaderRow[] = useMemo(
     () =>
-      [...schools]
-        .sort((a, b) => b.weeklyGrowth - a.weeklyGrowth)
-        .map((s, i) => ({
-          rank: i + 1,
-          name: s.shortName,
-          meta: s.location,
-          xp: Math.round(s.weeklyGrowth * 1000),
-          delta: Math.round(s.weeklyGrowth),
-          avatarColor: s.color,
-          highlight: s.id === profile.schoolId,
-        })),
-    [profile.schoolId],
+      campusData.map((d, i) => ({
+        rank: i + 1,
+        name: d.school.name,
+        meta: d.students === 1 ? "1 student" : `${d.students} students`,
+        xp: d.xp,
+        delta: 0,
+        avatarColor: d.school.color,
+        highlight: d.highlight,
+      })),
+    [campusData],
   );
 
   const clubRows: LeaderRow[] = useMemo(
     () =>
-      [...clubs]
-        .sort((a, b) => b.totalXp - a.totalXp)
-        .map((c, i) => ({
+      clubs
+        .map((c) => ({ c, members: clubStats[c.id] ?? 0 }))
+        .sort((a, b) => b.members - a.members)
+        .map((x, i) => ({
           rank: i + 1,
-          name: c.name,
-          meta: `${c.members.toLocaleString()} members`,
-          xp: c.totalXp,
+          name: x.c.name,
+          meta: x.members === 1 ? "1 member" : `${x.members} members`,
+          xp: x.members,
           delta: 0,
-          avatarColor: c.color,
-          highlight: profile.clubs.includes(c.id),
+          avatarColor: x.c.color,
+          highlight: profile.clubs.includes(x.c.id),
         })),
-    [profile.clubs],
-  );
-
-  // Simulator board is seed; only mark "You" if a row genuinely matches the user.
-  const simRows: LeaderRow[] = useMemo(
-    () => simulatorLeaders.map((r) => ({ ...r, highlight: r.name === profile.fullName })),
-    [profile.fullName],
+    [clubStats, profile.clubs],
   );
 
   const BOARDS: Board[] = useMemo(
     () => [
       { key: "campus", label: "Campus XP", rows: campusRows, unit: "XP", highlightLabel: "Your school", blurb: "Total knowledge earned per school. Every lesson moves your campus up." },
       { key: "student", label: "Student XP", rows: studentRows, unit: "XP", highlightLabel: "You", blurb: "The students putting in the reps. Learning compounds, just like money." },
-      { key: "weekly", label: "Weekly Growth", rows: weeklyRows, unit: "%", highlightLabel: "Your school", blurb: "Who's climbing fastest this week. Momentum beats starting position." },
-      { key: "clubs", label: "Clubs", rows: clubRows, unit: "XP", highlightLabel: "Your club", blurb: "Communities learning together. Find your people, grow your XP." },
+      { key: "clubs", label: "Clubs", rows: clubRows, unit: "members", highlightLabel: "Your club", blurb: "Communities learning together. The bigger the crew, the bigger the movement." },
       { key: "streaks", label: "Streaks", rows: streakRows, unit: "days", highlightLabel: "You", blurb: "Consistency is the real flex. Show up daily and the rest takes care of itself." },
-      { key: "simulator", label: "Simulator", rows: simRows, unit: "% return", highlightLabel: "You", blurb: "Practice-portfolio results. Paper gains only, risk-free reps that build instinct." },
     ],
-    [campusRows, studentRows, weeklyRows, clubRows, streakRows, simRows],
+    [campusRows, studentRows, clubRows, streakRows],
   );
 
   const board = BOARDS.find((b) => b.key === active) ?? BOARDS[0];
-  const podium = campusRows.slice(0, 3);
-  const mySchoolRow = campusRows.find((r) => r.highlight);
+  const podium = campusData.slice(0, 3);
   const mySchool = schoolById(profile.schoolId);
+  const myCampus = campusData.find((d) => d.highlight);
+  const myRank = campusData.findIndex((d) => d.highlight) + 1;
   const myStudentRank = studentRows.find((r) => r.highlight)?.rank;
 
   return (
@@ -186,8 +176,8 @@ export default function LeaderboardsPage() {
         }
       />
 
-      {/* Your-school callout (driven by the signed-in user's real school) */}
-      {mySchoolRow && mySchool && (
+      {/* Your-school callout, driven entirely by real campus data. */}
+      {myCampus && mySchool && (
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl border border-capital-400/20 bg-gradient-to-r from-capital-400/[0.08] via-violet-500/[0.05] to-transparent p-5 sm:p-6">
             <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-capital-400/10 blur-3xl" />
@@ -199,15 +189,12 @@ export default function LeaderboardsPage() {
                 <div>
                   <p className="text-sm font-semibold text-white">
                     {mySchool.shortName} sits at{" "}
-                    <span className="text-gradient-capital">#{mySchoolRow.rank}</span> in Campus XP
+                    <span className="text-gradient-capital">#{myRank}</span> in Campus XP
                   </p>
                   <p className="mt-1 max-w-md text-xs text-white/55">
-                    {mySchoolRow.delta >= 0
-                      ? `Up ${formatPercent(mySchoolRow.delta)} this week and still climbing.`
-                      : `Slipped ${Math.abs(mySchoolRow.delta)} spots this week.`}{" "}
-                    {myStudentRank
-                      ? `You're #${myStudentRank} among students here, every lesson you finish lifts the whole campus.`
-                      : "Every lesson you finish lifts the whole campus."}
+                    {myCampus.students <= 1
+                      ? `You're the first student here. Every lesson you finish puts ${mySchool.shortName} on the board.`
+                      : `${myCampus.students} students learning here${myStudentRank ? `, you're #${myStudentRank}` : ""}. Every lesson lifts the whole campus.`}
                   </p>
                 </div>
               </div>
@@ -231,11 +218,11 @@ export default function LeaderboardsPage() {
 
         <div className="grid grid-cols-3 items-end gap-3 sm:gap-5">
           {PODIUM_ORDER.map((rank, i) => {
-            const row = podium[rank - 1];
-            if (!row) return null;
+            const d = podium[rank - 1];
+            if (!d) return null;
             const isFirst = rank === 1;
             return (
-              <Reveal key={row.name} delay={0.08 * i}>
+              <Reveal key={d.school.id} delay={0.08 * i}>
                 <Card
                   glow={isFirst}
                   className={cn(
@@ -243,7 +230,7 @@ export default function LeaderboardsPage() {
                     isFirst
                       ? "border-capital-400/30 bg-gradient-to-b from-capital-400/[0.1] to-transparent pt-7 pb-6 sm:-translate-y-3"
                       : "pt-5 pb-5",
-                    row.highlight && "ring-1 ring-capital-400/30",
+                    d.highlight && "ring-1 ring-capital-400/30",
                   )}
                 >
                   {isFirst && (
@@ -254,7 +241,7 @@ export default function LeaderboardsPage() {
                   )}
 
                   <div className={cn("mb-2 text-2xl sm:text-3xl", isFirst && "animate-float")}>
-                    {emojiForSchool(row.name)}
+                    {d.school.emoji}
                   </div>
 
                   <div className="mb-2 text-2xl leading-none sm:text-3xl">
@@ -263,22 +250,22 @@ export default function LeaderboardsPage() {
 
                   <p
                     className={cn("max-w-full truncate px-1 text-sm font-bold", isFirst ? "text-gradient-capital" : "text-white")}
-                    title={row.name}
+                    title={d.school.name}
                   >
-                    {schools.find((s) => s.name === row.name)?.shortName ?? row.name}
+                    {d.school.shortName}
                   </p>
 
                   <p className={cn("mt-2 font-display font-bold tabular-nums text-white", isFirst ? "text-xl sm:text-2xl" : "text-base sm:text-lg")}>
-                    {formatCompact(row.xp)}
+                    {formatCompact(d.xp)}
                     <span className="ml-1 text-xs font-medium text-white/40">XP</span>
                   </p>
 
-                  <Pill tone={row.delta >= 0 ? "capital" : "rose"} className="mt-2">
-                    <TrendingUp className="h-3 w-3" />
-                    {formatPercent(row.delta)} wk
+                  <Pill tone="default" className="mt-2">
+                    <Users className="h-3 w-3" />
+                    {d.students === 1 ? "1 student" : `${d.students} students`}
                   </Pill>
 
-                  {row.highlight && (
+                  {d.highlight && (
                     <span className="mt-2 text-[11px] font-semibold text-capital-300">Your school</span>
                   )}
                 </Card>

@@ -16,6 +16,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { posts as seedPosts } from "@/lib/data/posts";
 import { people, personById } from "@/lib/data/people";
 import { schoolById } from "@/lib/data/schools";
+import { clubs as seedClubs } from "@/lib/data/clubs";
 import type { PostCategory } from "@/lib/types";
 
 export interface FeedAuthor {
@@ -308,3 +309,96 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
 
 export const schoolShort = (id: string | null) =>
   id ? schoolById(id)?.shortName ?? "" : "";
+
+// ── Clubs ───────────────────────────────────────────────────────────────────
+export interface ClubMember {
+  id: string;
+  fullName: string;
+  avatarColor: string;
+  xp: number;
+  schoolId: string | null;
+  major: string;
+}
+
+/** Real member counts per club (from club_members), or seed counts in demo. */
+export async function getClubStats(): Promise<Record<string, number>> {
+  if (!socialIsReal) {
+    const out: Record<string, number> = {};
+    for (const c of seedClubs) out[c.id] = c.members;
+    return out;
+  }
+  const sb = createClient();
+  if (!sb) return {};
+  try {
+    const { data } = await sb.from("club_members").select("club_id");
+    const out: Record<string, number> = {};
+    for (const row of (data ?? []) as { club_id: string }[]) {
+      out[row.club_id] = (out[row.club_id] ?? 0) + 1;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Real members of a club (joined profiles), or seed members in demo. */
+export async function getClubMembers(clubId: string): Promise<ClubMember[]> {
+  if (!socialIsReal) {
+    return people
+      .filter((p) => p.clubs.includes(clubId))
+      .map((p) => ({ id: p.id, fullName: p.fullName, avatarColor: p.avatarColor, xp: p.xp, schoolId: p.schoolId, major: p.major }));
+  }
+  const sb = createClient();
+  if (!sb) return [];
+  try {
+    const { data } = await sb
+      .from("club_members")
+      .select("user_id, profiles(id, full_name, avatar_color, xp, school_id, major)")
+      .eq("club_id", clubId)
+      .limit(100);
+    type Row = { profiles: { id: string; full_name: string; avatar_color: string | null; xp: number | null; school_id: string | null; major: string | null } | null };
+    return ((data ?? []) as unknown as Row[])
+      .map((r) => r.profiles)
+      .filter((p): p is NonNullable<Row["profiles"]> => Boolean(p))
+      .map((p) => ({
+        id: p.id,
+        fullName: p.full_name ?? "Student",
+        avatarColor: p.avatar_color ?? "from-capital-400 to-violet-500",
+        xp: p.xp ?? 0,
+        schoolId: p.school_id,
+        major: p.major ?? "",
+      }))
+      .sort((a, b) => b.xp - a.xp);
+  } catch {
+    return [];
+  }
+}
+
+export async function joinClub(clubId: string): Promise<void> {
+  if (!socialIsReal) return;
+  const sb = createClient();
+  if (!sb) return;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return;
+    await sb.from("club_members").upsert(
+      { club_id: clubId, user_id: user.id },
+      { onConflict: "club_id,user_id" },
+    );
+  } catch {
+    /* non-fatal */
+  }
+}
+
+export async function leaveClub(clubId: string): Promise<void> {
+  if (!socialIsReal) return;
+  const sb = createClient();
+  if (!sb) return;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return;
+    await sb.from("club_members").delete().eq("club_id", clubId).eq("user_id", user.id);
+  } catch {
+    /* non-fatal */
+  }
+}

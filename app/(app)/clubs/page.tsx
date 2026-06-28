@@ -1,14 +1,29 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Globe, Sparkles, Trophy, Users } from "lucide-react";
+import { Globe, Sparkles, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { clubs } from "@/lib/data/clubs";
-import { currentUser } from "@/lib/data/people";
-import { cn, formatCompact } from "@/lib/utils";
+import { getClubStats } from "@/lib/social";
+import { useAppState } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 export default function ClubsPage() {
+  const { profile } = useAppState();
+  const [stats, setStats] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let alive = true;
+    getClubStats().then((s) => alive && setStats(s));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <div>
       <PageHeader
@@ -24,7 +39,8 @@ export default function ClubsPage() {
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {clubs.map((club) => {
-          const joined = currentUser.clubs.includes(club.id);
+          const joined = profile.clubs.includes(club.id);
+          const members = stats[club.id] ?? 0;
           return (
             <Link key={club.id} href={`/clubs/${club.id}`} className="group">
               <Card
@@ -63,15 +79,15 @@ export default function ClubsPage() {
                 </h3>
                 <p className="mt-1 text-sm text-white/55">{club.tagline}</p>
 
-                {/* Stats */}
+                {/* Real membership — honest about being early. */}
                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/50">
                   <span className="inline-flex items-center gap-1.5">
                     <Users className="h-3.5 w-3.5 text-white/40" />
-                    {club.members.toLocaleString()} members
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Trophy className="h-3.5 w-3.5 text-amber-300" />
-                    {formatCompact(club.totalXp)} XP
+                    {members === 0
+                      ? "Be the first to join"
+                      : members === 1
+                        ? "1 member"
+                        : `${members.toLocaleString()} members`}
                   </span>
                 </div>
 
