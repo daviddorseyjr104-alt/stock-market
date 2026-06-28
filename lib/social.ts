@@ -310,6 +310,29 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
 export const schoolShort = (id: string | null) =>
   id ? schoolById(id)?.shortName ?? "" : "";
 
+/**
+ * Real follower / following counts for the signed-in user (from the follows
+ * table). Returns null in demo mode so the caller can fall back to seed values.
+ */
+export async function getFollowCounts(): Promise<{ followers: number; following: number } | null> {
+  if (!socialIsReal) return null;
+  const sb = createClient();
+  if (!sb) return { followers: 0, following: 0 };
+  try {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (!user) return { followers: 0, following: 0 };
+    const [followersRes, followingRes] = await Promise.all([
+      sb.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
+      sb.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
+    ]);
+    return { followers: followersRes.count ?? 0, following: followingRes.count ?? 0 };
+  } catch {
+    return { followers: 0, following: 0 };
+  }
+}
+
 // ── Clubs ───────────────────────────────────────────────────────────────────
 export interface ClubMember {
   id: string;

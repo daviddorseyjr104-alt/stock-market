@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Award,
@@ -31,12 +31,12 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { schoolById } from "@/lib/data/schools";
+import { schoolById, schools } from "@/lib/data/schools";
 import { badges, badgeById } from "@/lib/data/badges";
 import { lessonById } from "@/lib/data/lessons";
 import { clubById } from "@/lib/data/clubs";
 import { useAppState, levelForXp } from "@/lib/store";
-import { getFeed, type FeedPost } from "@/lib/social";
+import { getFeed, getStudentLeaders, getFollowCounts, type FeedPost, type LeaderProfile } from "@/lib/social";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Badge } from "@/lib/types";
 
@@ -108,13 +108,58 @@ export default function ProfilePage() {
   const school = schoolById(user.schoolId);
 
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [students, setStudents] = useState<LeaderProfile[]>([]);
+  const [follows, setFollows] = useState<{ followers: number; following: number } | null>(null);
   useEffect(() => {
     let alive = true;
     getFeed().then((p) => alive && setFeedPosts(p));
+    getFollowCounts().then((f) => alive && setFollows(f));
+    const loadRanks = () => getStudentLeaders().then((s) => alive && setStudents(s));
+    loadRanks();
+    const id = setInterval(loadRanks, 60_000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
   }, []);
+
+  // Real follower / following counts when signed in; seed only as a demo fallback.
+  const followers = follows?.followers ?? user.followers;
+  const following = follows?.following ?? user.following;
+
+  // Live campus + national rank, computed from real student XP (same source as
+  // the leaderboards), with the signed-in user merged in.
+  const { campusRank, nationalRank } = useMemo(() => {
+    const me: LeaderProfile = {
+      id: user.id,
+      fullName: user.fullName,
+      avatarColor: user.avatarColor,
+      xp: user.xp,
+      streak: user.streak,
+      schoolId: user.schoolId,
+      major: user.major,
+    };
+    const roster = students.some((s) => s.id === user.id)
+      ? students.map((s) => (s.id === user.id ? me : s))
+      : [...students, me];
+
+    const campus = roster
+      .filter((p) => p.schoolId === user.schoolId)
+      .sort((a, b) => b.xp - a.xp)
+      .findIndex((p) => p.id === user.id) + 1;
+
+    const agg: Record<string, number> = {};
+    for (const p of roster) {
+      if (!p.schoolId) continue;
+      agg[p.schoolId] = (agg[p.schoolId] ?? 0) + p.xp;
+    }
+    const national = schools
+      .map((s) => ({ id: s.id, xp: agg[s.id] ?? 0 }))
+      .sort((a, b) => b.xp - a.xp || a.id.localeCompare(b.id))
+      .findIndex((s) => s.id === user.schoolId) + 1;
+
+    return { campusRank: campus, nationalRank: national };
+  }, [students, user]);
   const earnedBadges = user.badges
     .map((id) => badgeById(id))
     .filter((b): b is Badge => Boolean(b));
@@ -169,13 +214,13 @@ export default function ProfilePage() {
             <div className="flex items-center gap-6 text-sm">
               <div>
                 <span className="font-display text-lg font-bold text-white">
-                  {user.followers.toLocaleString()}
+                  {followers.toLocaleString()}
                 </span>{" "}
                 <span className="text-white/45">followers</span>
               </div>
               <div>
                 <span className="font-display text-lg font-bold text-white">
-                  {user.following.toLocaleString()}
+                  {following.toLocaleString()}
                 </span>{" "}
                 <span className="text-white/45">following</span>
               </div>
@@ -227,14 +272,14 @@ export default function ProfilePage() {
         />
         <StatCard
           label="Campus rank"
-          value={user.campusRank > 0 ? `#${user.campusRank}` : ", "}
+          value={campusRank > 0 ? `#${campusRank}` : "—"}
           sub={school ? school.shortName : "On campus"}
           icon={<Medal className="h-4 w-4" />}
           tone="violet"
         />
         <StatCard
           label="National rank"
-          value={user.nationalRank > 0 ? `#${user.nationalRank}` : ", "}
+          value={nationalRank > 0 ? `#${nationalRank}` : "—"}
           sub="Across all campuses"
           icon={<TrendingUp className="h-4 w-4" />}
           tone="rose"

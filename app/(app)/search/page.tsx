@@ -149,7 +149,7 @@ export default function SearchPage() {
               </div>
             }
             title={s.name}
-            meta={`${s.location} · ${s.activeStudents.toLocaleString()} students`}
+            meta={s.location}
           />
         )),
       });
@@ -174,7 +174,7 @@ export default function SearchPage() {
               </div>
             }
             title={c.name}
-            meta={`${c.tagline} · ${c.members.toLocaleString()} members`}
+            meta={c.tagline}
           />
         )),
       });

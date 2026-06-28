@@ -297,7 +297,7 @@ function SignupInner() {
                       <span className="text-xl">{c.emoji}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-white">{c.name}</span>
-                        <span className="block truncate text-xs text-white/45">{c.members.toLocaleString()} members</span>
+                        <span className="block truncate text-xs text-white/45">{c.tagline}</span>
                       </span>
                     </button>
                   ))}

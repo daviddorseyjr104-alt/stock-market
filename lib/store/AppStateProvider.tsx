@@ -25,7 +25,6 @@ import type {
 } from "@/lib/types";
 import { currentUser as demoPersona } from "@/lib/data/people";
 import { posts as seedPosts } from "@/lib/data/posts";
-import { notifications as seedNotifications } from "@/lib/data/notifications";
 import { defaultPortfolio } from "@/lib/data/portfolio";
 import { lessonById } from "@/lib/data/lessons";
 import { badgeById } from "@/lib/data/badges";
@@ -37,6 +36,19 @@ import {
 } from "./progression";
 import { getRepository, type Snapshot, type EquityPoint } from "./repository";
 
+// A single honest welcome notification (no fabricated social/rank events).
+function welcomeNote(createdAt: string): Notification {
+  return {
+    id: "welcome",
+    type: "lesson",
+    title: "Welcome to Campus Capital 🎉",
+    body: "Start with “What is investing, really?” to earn your first badge.",
+    createdAt,
+    read: false,
+    href: "/learn/what-is-investing",
+  };
+}
+
 // ── Default (demo) snapshot, deterministic, SSR-safe ──────────────────────
 function demoSnapshot(): Snapshot {
   return {
@@ -45,7 +57,7 @@ function demoSnapshot(): Snapshot {
     profile: { ...demoPersona, level: levelForXp(demoPersona.xp) },
     posts: seedPosts,
     portfolio: structuredClonePortfolio(defaultPortfolio),
-    notifications: seedNotifications,
+    notifications: [welcomeNote("2026-01-05T17:00:00.000Z")],
     challengeProgress: {},
     lastActiveDate: null,
     equityHistory: [],
@@ -206,17 +218,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         profile: fresh,
         posts: seedPosts, // the campus feed is shared/social content
         portfolio: structuredClonePortfolio(defaultPortfolio),
-        notifications: [
-          {
-            id: "welcome",
-            type: "lesson",
-            title: "Welcome to Campus Capital 🎉",
-            body: "Start with “What is investing, really?” to earn your first badge.",
-            createdAt: new Date().toISOString(),
-            read: false,
-            href: "/learn/what-is-investing",
-          },
-        ],
+        notifications: [welcomeNote(new Date().toISOString())],
         challengeProgress: {},
         lastActiveDate: null,
         equityHistory: [],
