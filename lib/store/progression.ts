@@ -1,5 +1,7 @@
 import type { Position, Profile } from "@/lib/types";
 import { lessons } from "@/lib/data/lessons";
+import { courses, lessonsForCourse } from "@/lib/data/courses";
+import { skills } from "@/lib/data/skills";
 
 export const XP_PER_LEVEL = 1000;
 
@@ -29,14 +31,57 @@ export function nextStreak(current: number, lastActive: string | null): number {
   return 1; // streak broken, restart
 }
 
+/** Per-course completion from a set of completed lesson ids. */
+export function courseProgress(
+  courseId: string,
+  completed: string[] | Set<string>,
+): { done: number; total: number; pct: number } {
+  const doneSet = completed instanceof Set ? completed : new Set(completed);
+  const all = lessonsForCourse(courseId);
+  const done = all.filter((l) => doneSet.has(l.id)).length;
+  const total = all.length;
+  return { done, total, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
+}
+
+/** Alias for {@link courseProgress}, same semantics, spec-contract name. */
+export const courseCompletion = courseProgress;
+
+/**
+ * Skill ids the user has started: one skill per course, earned by completing
+ * at least one lesson in that course.
+ */
+export function computeSkills(profile: Profile): string[] {
+  const done = new Set(profile.completedLessons);
+  return skills
+    .filter((s) => lessonsForCourse(s.courseId).some((l) => done.has(l.id)))
+    .map((s) => s.id);
+}
+
+/**
+ * Extra signals for badges that can't be derived from persistent state alone.
+ * Event badges (perfect-lesson) are "sticky": once present in profile.badges
+ * they are preserved across recomputes.
+ */
+export interface BadgeSignals {
+  /** Correct answers today (from dailyXp.correct). */
+  dailyCorrect?: number;
+}
+
+const STICKY_BADGE_IDS = new Set(["perfect-lesson", "quiz-ace"]);
+
 /**
  * Recomputes the full set of earned badge ids from the user's real state.
  * This is the single source of truth for badges, no hardcoded awards.
  */
-export function computeBadges(profile: Profile, positions: Position[]): string[] {
+export function computeBadges(
+  profile: Profile,
+  positions: Position[],
+  signals?: BadgeSignals,
+): string[] {
   const done = new Set(profile.completedLessons);
   const earned = new Set<string>();
 
+  // ── Legacy lesson-track badges (unchanged) ────────────────────────────────
   if (done.size >= 1) earned.add("first-lesson");
   if (done.has("etfs") && done.has("index-funds")) earned.add("etf-explorer");
   if (done.has("compound-interest")) earned.add("compound-king");
@@ -50,6 +95,40 @@ export function computeBadges(profile: Profile, positions: Position[]): string[]
 
   const assetTypes = new Set(positions.map((p) => p.assetType));
   if (assetTypes.size >= 4) earned.add("diversified");
+
+  // ── Course-engine badges ─────────────────────────────────────────────────
+  const completedCourseIds = courses
+    .filter((c) => {
+      const all = lessonsForCourse(c.id);
+      return all.length > 0 && all.every((l) => done.has(l.id));
+    })
+    .map((c) => c.id);
+
+  if (completedCourseIds.length >= 1) earned.add("first-course");
+
+  const completedCourses = new Set(completedCourseIds);
+  const categoryDone = (category: string) => {
+    const inCat = courses.filter((c) => c.category === category);
+    return inCat.length > 0 && inCat.every((c) => completedCourses.has(c.id));
+  };
+  if (categoryDone("Money")) earned.add("money-master");
+  if (categoryDone("Investing")) earned.add("investing-master");
+  if (categoryDone("Startups")) earned.add("startup-master");
+  if (categoryDone("Career")) earned.add("career-master");
+
+  const level = levelForXp(profile.xp);
+  if (level >= 5) earned.add("level-5");
+  if (level >= 10) earned.add("level-10");
+
+  if (positions.length >= 1) earned.add("first-trade");
+
+  if ((signals?.dailyCorrect ?? 0) >= 10) earned.add("quiz-ace");
+
+  // Sticky event badges: keep any previously-earned one (e.g. perfect-lesson,
+  // quiz-ace on a later day) that can't be re-derived from persistent state.
+  for (const id of profile.badges) {
+    if (STICKY_BADGE_IDS.has(id)) earned.add(id);
+  }
 
   return Array.from(earned);
 }

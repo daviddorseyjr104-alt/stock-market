@@ -1,4 +1,12 @@
-import type { Notification, Portfolio, Post, Profile } from "@/lib/types";
+import type {
+  Certificate,
+  CoachNote,
+  Notification,
+  Portfolio,
+  Post,
+  Profile,
+  SavedProject,
+} from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -19,13 +27,26 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const STORAGE_KEY = "cc_state_v1";
 
+/** Current snapshot schema version. Mismatched persisted snapshots are
+ *  discarded on load and the app falls back to a fresh demo snapshot. */
+export const SNAPSHOT_VERSION = 2 as const;
+
 export interface EquityPoint {
   t: number; // epoch ms
   v: number; // total account value at that time
 }
 
+/** Per-day activity counters; reset when the local day changes. */
+export interface DailyXp {
+  date: string; // local dateKey "YYYY-MM-DD"
+  xp: number;
+  correct: number;
+  lessons: number;
+  minutes: number;
+}
+
 export interface Snapshot {
-  v: 1;
+  v: typeof SNAPSHOT_VERSION;
   authed: boolean;
   profile: Profile;
   posts: Post[];
@@ -34,6 +55,17 @@ export interface Snapshot {
   challengeProgress: Record<string, number>;
   lastActiveDate: string | null;
   equityHistory: EquityPoint[];
+  // ── v2: course-engine + gamified state ────────────────────────────────────
+  /** dateKey of the last hearts refill; hearts refill to max on a new local day. */
+  heartsLastRefill: string | null;
+  dailyXp: DailyXp;
+  /** Progress per active daily-quest id; reset daily. */
+  questProgress: Record<string, number>;
+  coachNotes: CoachNote[];
+  savedProjects: SavedProject[];
+  /** RSVP'd campus event ids. */
+  rsvps: string[];
+  certificates: Certificate[];
 }
 
 export interface Repository {
@@ -50,9 +82,16 @@ class LocalRepository implements Repository {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Snapshot;
-      if (parsed.v !== 1) return null;
-      // Forward-compat: older snapshots may predate equityHistory.
+      // Version mismatch → discard; the provider falls back to demoSnapshot.
+      if (parsed.v !== SNAPSHOT_VERSION) return null;
+      // Forward-compat: fill any missing collections defensively.
       if (!Array.isArray(parsed.equityHistory)) parsed.equityHistory = [];
+      if (!Array.isArray(parsed.coachNotes)) parsed.coachNotes = [];
+      if (!Array.isArray(parsed.savedProjects)) parsed.savedProjects = [];
+      if (!Array.isArray(parsed.rsvps)) parsed.rsvps = [];
+      if (!Array.isArray(parsed.certificates)) parsed.certificates = [];
+      if (!parsed.questProgress || typeof parsed.questProgress !== "object")
+        parsed.questProgress = {};
       return parsed;
     } catch {
       return null;

@@ -10,9 +10,8 @@ export function Card({
     <div
       className={cn(
         "glass rounded-3xl p-5 shadow-card",
-        hover &&
-          "transition-all duration-300 hover:border-white/20 hover:-translate-y-0.5 hover:shadow-float",
-        glow && "shadow-glow",
+        hover && "card-lift sheen hover:border-white/20",
+        glow && "shadow-glow hover:shadow-glow-lg transition-all duration-300",
         className,
       )}
       {...props}

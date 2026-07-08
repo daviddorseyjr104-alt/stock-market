@@ -75,6 +75,12 @@ export interface Profile {
   completedLessons: string[]; // lesson ids
   clubs: string[]; // club ids
   joinedAt: string;
+  /** Current hearts (lives) for lesson play. Defaults to 5. */
+  hearts?: number;
+  /** Max hearts, refilled daily. Defaults to 5. */
+  maxHearts?: number;
+  /** Skill ids the user has started (≥1 lesson complete in that course). */
+  skills?: string[];
 }
 
 export type Difficulty = "Beginner" | "Intermediate" | "Advanced";
@@ -163,6 +169,10 @@ export interface Club {
   totalXp: number;
   learningGoal: string;
   weeklyChallenge: string;
+  /** Club category, e.g. "Finance", "Startup", "Investing", "Real estate", "Consulting", "Analytics". */
+  category?: string;
+  /** Featured on the clubs page. */
+  featured?: boolean;
 }
 
 export interface Challenge {
@@ -230,4 +240,152 @@ export interface LeaderRow {
   delta: number; // weekly change in rank
   avatarColor: string;
   highlight?: boolean;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Course engine (structured, reusable lesson/quiz engine)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type QuestionType =
+  | "mcq"
+  | "true-false"
+  | "scenario"
+  | "fill-in"
+  | "match";
+
+export interface MatchPair {
+  left: string;
+  right: string;
+}
+
+export interface Question {
+  id: string;
+  type: QuestionType;
+  prompt: string;
+  context?: string; // scenario setup text
+  options?: string[]; // mcq / scenario
+  correctIndex?: number; // mcq / scenario
+  correctBool?: boolean; // true-false
+  accept?: string[]; // fill-in accepted answers (case/space-insensitive match)
+  pairs?: MatchPair[]; // match, tap a term on the left to its meaning on the right
+  explanation: string; // shown after answering
+  hint?: string;
+  xp?: number; // xp for a correct answer (default 10)
+}
+
+export interface TeachCard {
+  kind: "teach";
+  id: string;
+  title: string;
+  body: string; // 1-3 sentences, student-native
+  example?: string; // concrete real-life student example
+  analogy?: string;
+}
+
+export interface QuestionCard extends Question {
+  kind: "question";
+}
+
+export type LessonCard = TeachCard | QuestionCard;
+
+export type LessonKind = "lesson" | "challenge"; // "challenge" = boss/final node
+
+export interface CourseLesson {
+  id: string;
+  unitId: string;
+  courseId: string;
+  order: number;
+  title: string;
+  difficulty: Difficulty; // "Beginner" | "Intermediate" | "Advanced"
+  kind: LessonKind;
+  xp: number; // completion bonus
+  summary: string;
+  cards: LessonCard[]; // teach + question cards, in play order
+}
+
+export interface Unit {
+  id: string;
+  courseId: string;
+  order: number;
+  title: string;
+  subtitle: string;
+  lessons: CourseLesson[]; // last lesson of a unit is usually kind:"challenge"
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  tagline: string;
+  description: string;
+  category: string; // e.g. "Money","Investing","Startups","Career"
+  icon: string; // lucide icon NAME (string)
+  color: string; // tailwind gradient e.g. "from-capital-400 to-capital-600"
+  accent: string; // a tailwind text/border color token e.g. "capital-300"
+  order: number;
+  unlockLevel: number; // course unlocks when profile.level >= this
+  units: Unit[];
+}
+
+export interface Skill {
+  id: string;
+  courseId: string;
+  name: string;
+  icon: string;
+}
+
+export interface DailyQuest {
+  id: string;
+  title: string;
+  description: string;
+  metric: "lessons" | "xp" | "correct" | "minutes";
+  goal: number;
+  xpReward: number;
+  icon: string;
+}
+
+export interface WeeklyGoal {
+  id: string;
+  title: string;
+  metric: "xp" | "lessons";
+  goal: number;
+  icon: string;
+}
+
+export interface CampusEvent {
+  id: string;
+  title: string;
+  kind: "event" | "competition" | "office-hours" | "opportunity";
+  org: string;
+  date: string;
+  time: string;
+  location: string;
+  description: string;
+  tags: string[];
+  capacity?: number;
+  going: number;
+  icon: string;
+}
+
+export interface CoachNote {
+  id: string;
+  title: string;
+  body: string;
+  topic: string;
+  createdAt: string;
+}
+
+export interface SavedProject {
+  id: string;
+  kind: string; // simulator id e.g. "budget","startup"
+  title: string;
+  summary: string;
+  createdAt: string;
+  data: Record<string, unknown>; // structured result payload
+}
+
+export interface Certificate {
+  id: string;
+  courseId: string;
+  title: string;
+  earnedAt: string;
 }

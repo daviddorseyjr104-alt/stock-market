@@ -23,7 +23,11 @@ body {
   font-feature-settings: "ss01", "cv01", "cv02";
 }
 
-/* Ambient page backdrop — soft brand glow + faint grid */
+/* Ambient page backdrop — living aurora glow + film grain + faint grid.
+   ::before carries the brand-green/violet mesh (oversized + GPU transform
+   drift so no edges show) plus an ultra-subtle inline-SVG grain layer.
+   ::after keeps the faint grid, masked toward the top of the viewport.
+   Drift is disabled under prefers-reduced-motion. */
 .app-backdrop {
   position: relative;
   isolation: isolate;
@@ -31,12 +35,19 @@ body {
 .app-backdrop::before {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -14%;
   z-index: -2;
   background:
+    /* film grain (tiny inline SVG, ~4% strength — texture, not noise) */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E") repeat,
+    /* aurora mesh — brand green + violet + a faint low green ember */
     radial-gradient(50% 40% at 15% 0%, rgba(57, 245, 172, 0.10), transparent 60%),
     radial-gradient(45% 45% at 100% 10%, rgba(124, 92, 255, 0.12), transparent 60%),
+    radial-gradient(38% 34% at 78% 88%, rgba(57, 245, 172, 0.045), transparent 65%),
+    radial-gradient(30% 30% at 4% 72%, rgba(124, 92, 255, 0.05), transparent 65%),
     #05060a;
+  animation: aurora-drift 36s ease-in-out infinite alternate;
+  will-change: transform;
 }
 .app-backdrop::after {
   content: "";
@@ -48,6 +59,56 @@ body {
     linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(80% 60% at 50% 0%, black, transparent 85%);
+}
+
+/* Slow, imperceptible-until-you-notice drift for the backdrop mesh.
+   Transform-only (compositor friendly) and stays within the -14% bleed. */
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.5%, -1.5%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(-2%, 1.5%, 0) scale(1.02);
+  }
+}
+
+/* Diagonal highlight sweep used by .sheen (see components layer). */
+@keyframes sheen-sweep {
+  0% {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(240%) skewX(-18deg);
+  }
+}
+
+/* Gentle scale/opacity breathing for hero glows and orbs. */
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.035);
+    opacity: 1;
+  }
+}
+
+/* Animated angle for .gradient-border (falls back to a static gradient
+   in browsers without @property support). */
+@property --gb-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 135deg;
+}
+@keyframes gb-spin {
+  to {
+    --gb-angle: 495deg;
+  }
 }
 
 @layer components {
@@ -89,6 +150,114 @@ body {
   .ring-focus {
     @apply outline-none ring-2 ring-capital-400/60 ring-offset-2 ring-offset-ink-950;
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Premium utilities (additive — compose with existing classes)        */
+  /* ------------------------------------------------------------------ */
+
+  /* .text-glow — soft neon halo for light/gradient headline text.
+     Compose: "text-white text-glow" or "text-gradient-capital text-glow". */
+  .text-glow {
+    text-shadow:
+      0 0 10px rgba(255, 255, 255, 0.12),
+      0 0 28px rgba(57, 245, 172, 0.28),
+      0 0 60px rgba(124, 92, 255, 0.14);
+  }
+
+  /* .glow-ring — soft outer brand halo for hero/focus surfaces.
+     Pure box-shadow; safe on .glass / .glass-strong / .glass-hi. */
+  .glow-ring {
+    box-shadow:
+      0 0 0 1px rgba(57, 245, 172, 0.16),
+      0 0 24px -4px rgba(57, 245, 172, 0.30),
+      0 0 64px -12px rgba(124, 92, 255, 0.28);
+  }
+
+  /* .gradient-border — animated green→violet conic border on a dark
+     glassy fill (padding-box/border-box trick). Supplies its own
+     background, so use it standalone (add rounded-* yourself); do NOT
+     stack with .glass. Spin is disabled under reduced motion. */
+  .gradient-border {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(180deg, rgba(18, 22, 33, 0.92), rgba(8, 10, 17, 0.94))
+        padding-box,
+      conic-gradient(
+          from var(--gb-angle),
+          rgba(57, 245, 172, 0.55),
+          rgba(124, 92, 255, 0.5),
+          rgba(16, 226, 154, 0.25),
+          rgba(57, 245, 172, 0.55)
+        )
+        border-box;
+    animation: gb-spin 7s linear infinite;
+  }
+
+  /* .sheen — a diagonal highlight sweeps across on hover. Adds
+     position/overflow clipping; content is untouched (sweep layer is
+     pointer-events: none). Great on cards and primary buttons. */
+  .sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .sheen::after {
+    content: "";
+    position: absolute;
+    top: -20%;
+    bottom: -20%;
+    left: 0;
+    width: 40%;
+    pointer-events: none;
+    background: linear-gradient(
+      105deg,
+      transparent,
+      rgba(255, 255, 255, 0.055),
+      rgba(57, 245, 172, 0.05),
+      transparent
+    );
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  .sheen:hover::after {
+    animation: sheen-sweep 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* .card-lift — hover raise + deeper shadow. Compose with .glass. */
+  .card-lift {
+    transition:
+      transform 0.3s cubic-bezier(0.21, 0.6, 0.35, 1),
+      box-shadow 0.3s cubic-bezier(0.21, 0.6, 0.35, 1),
+      border-color 0.3s ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+      0 30px 80px -30px rgba(0, 0, 0, 0.9),
+      0 12px 48px -16px rgba(57, 245, 172, 0.12);
+  }
+
+  /* .glass-hi — highest-fidelity glass tier for hero surfaces: a touch
+     brighter and blurrier than .glass-strong, with an inner top light. */
+  .glass-hi {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.075),
+      rgba(255, 255, 255, 0.025) 40%,
+      rgba(12, 15, 24, 0.55)
+    );
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(28px) saturate(1.35);
+    -webkit-backdrop-filter: blur(28px) saturate(1.35);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+      0 20px 50px -24px rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* Text selection — brand tint */
+::selection {
+  background: rgba(57, 245, 172, 0.28);
+  color: #f5f7fb;
 }
 
 /* Scrollbar */
@@ -147,5 +316,11 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+  /* Explicitly park the ambient motion layers. */
+  .app-backdrop::before,
+  .gradient-border,
+  .sheen::after {
+    animation: none !important;
   }
 }

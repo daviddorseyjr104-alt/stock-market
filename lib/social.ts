@@ -5,7 +5,7 @@
 //
 // REAL mode (Supabase configured): posts, comments, likes, and the student
 // leaderboard are read from / written to the shared database. No fabricated
-// users — the feed reflects only real people who actually joined.
+// users, the feed reflects only real people who actually joined.
 //
 // DEMO mode (no Supabase keys): an in-memory seed makes the experience
 // explorable without a backend. Clearly a demo, never presented as real.

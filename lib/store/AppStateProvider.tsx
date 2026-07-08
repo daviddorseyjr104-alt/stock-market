@@ -12,6 +12,10 @@ import {
 import type {
   Goal,
   AssetType,
+  CoachNote,
+  Certificate,
+  Course,
+  DailyQuest,
   Interest,
   InvestingLevel,
   Notification,
@@ -21,20 +25,41 @@ import type {
   PostCategory,
   Profile,
   RiskLabel,
+  SavedProject,
+  Skill,
   StudentType,
 } from "@/lib/types";
 import { currentUser as demoPersona } from "@/lib/data/people";
 import { posts as seedPosts } from "@/lib/data/posts";
 import { defaultPortfolio } from "@/lib/data/portfolio";
-import { lessonById } from "@/lib/data/lessons";
+import { lessonById, lessons } from "@/lib/data/lessons";
 import { badgeById } from "@/lib/data/badges";
 import {
+  courseById,
+  courseLessonById,
+  firstLessonOfCourse,
+  lessonsForCourse,
+  nextLessonId,
+} from "@/lib/data/courses";
+import { skills } from "@/lib/data/skills";
+import { dailyQuestsFor } from "@/lib/data/quests";
+import {
   computeBadges,
+  computeSkills,
+  courseProgress,
   dateKey,
   levelForXp,
   nextStreak,
 } from "./progression";
-import { getRepository, type Snapshot, type EquityPoint } from "./repository";
+import {
+  getRepository,
+  SNAPSHOT_VERSION,
+  type DailyXp,
+  type Snapshot,
+  type EquityPoint,
+} from "./repository";
+
+export const MAX_HEARTS = 5;
 
 // A single honest welcome notification (no fabricated social/rank events).
 function welcomeNote(createdAt: string): Notification {
@@ -49,23 +74,116 @@ function welcomeNote(createdAt: string): Notification {
   };
 }
 
+function freshDailyXp(date = dateKey()): DailyXp {
+  return { date, xp: 0, correct: 0, lessons: 0, minutes: 0 };
+}
+
+// The demo persona keeps their identity, but every EARNED stat starts at
+// zero: xp, level, streak, badges, lessons, ranks. Progress is real, not faked.
+function freshDemoProfile(): Profile {
+  return {
+    ...demoPersona,
+    level: 1,
+    xp: 0,
+    streak: 0,
+    campusRank: 0,
+    nationalRank: 0,
+    followers: 0,
+    following: 0,
+    badges: [],
+    completedLessons: [],
+    hearts: MAX_HEARTS,
+    maxHearts: MAX_HEARTS,
+    skills: [],
+  };
+}
+
 // ── Default (demo) snapshot, deterministic, SSR-safe ──────────────────────
+// dailyXp.date uses a fixed sentinel so server and client render identically;
+// the daily rollover (reconcile) stamps the real local date after hydration.
 function demoSnapshot(): Snapshot {
   return {
-    v: 1,
+    v: SNAPSHOT_VERSION,
     authed: false,
-    profile: { ...demoPersona, level: levelForXp(demoPersona.xp) },
+    profile: freshDemoProfile(),
     posts: seedPosts,
     portfolio: structuredClonePortfolio(defaultPortfolio),
     notifications: [welcomeNote("2026-01-05T17:00:00.000Z")],
     challengeProgress: {},
     lastActiveDate: null,
     equityHistory: [],
+    heartsLastRefill: null,
+    dailyXp: freshDailyXp("1970-01-01"),
+    questProgress: {},
+    coachNotes: [],
+    savedProjects: [],
+    rsvps: [],
+    certificates: [],
   };
 }
 
 function structuredClonePortfolio(p: Portfolio): Portfolio {
   return { ...p, positions: p.positions.map((h) => ({ ...h })) };
+}
+
+// ── Daily rollover (pure) ──────────────────────────────────────────────────
+// On a new local day: hearts refill to max, dailyXp counters and quest
+// progress reset. Idempotent, applied during hydrate and on every reconcile.
+function rolloverDay(s: Snapshot): Snapshot {
+  const today = dateKey();
+  let next = s;
+  if (s.dailyXp.date !== today) {
+    next = { ...next, dailyXp: freshDailyXp(today), questProgress: {} };
+  }
+  if (s.heartsLastRefill !== today) {
+    next = {
+      ...next,
+      heartsLastRefill: today,
+      profile: {
+        ...next.profile,
+        hearts: next.profile.maxHearts ?? MAX_HEARTS,
+        maxHearts: next.profile.maxHearts ?? MAX_HEARTS,
+      },
+    };
+  }
+  return next;
+}
+
+function metricValue(daily: DailyXp, metric: DailyQuest["metric"]): number {
+  switch (metric) {
+    case "lessons":
+      return daily.lessons;
+    case "xp":
+      return daily.xp;
+    case "correct":
+      return daily.correct;
+    case "minutes":
+      return daily.minutes;
+  }
+}
+
+// Syncs stored quest progress with today's counters and awards each active
+// quest's xpReward exactly once when it crosses its goal. Loops because an
+// XP reward can itself complete an "earn XP" quest.
+function applyQuestProgress(s: Snapshot): Snapshot {
+  const active = dailyQuestsFor(s.dailyXp.date);
+  let profile = s.profile;
+  let daily = s.dailyXp;
+  const qp = { ...s.questProgress };
+  for (let pass = 0; pass < 4; pass++) {
+    let bonus = 0;
+    for (const q of active) {
+      const value = metricValue(daily, q.metric);
+      const prev = qp[q.id] ?? 0;
+      if (prev < q.goal && value >= q.goal) bonus += q.xpReward;
+      qp[q.id] = value;
+    }
+    if (bonus === 0) break;
+    profile = { ...profile, xp: profile.xp + bonus };
+    daily = { ...daily, xp: daily.xp + bonus };
+    for (const q of active) qp[q.id] = metricValue(daily, q.metric);
+  }
+  return { ...s, profile, dailyXp: daily, questProgress: qp };
 }
 
 export interface BuyOrder {
@@ -96,6 +214,24 @@ export interface LessonReward {
   leveledUp: boolean;
   newBadgeIds: string[];
   alreadyDone: boolean;
+  /** The lesson unlocked by this completion (next in the course), if any. */
+  unlockedLessonId?: string;
+  /** Set when this completion finished the lesson's whole course. */
+  courseCompletedId?: string;
+}
+
+export interface QuestStatus {
+  quest: DailyQuest;
+  value: number;
+  done: boolean;
+}
+
+export interface SkillProgressRow {
+  skill: Skill;
+  course: Course;
+  pct: number;
+  done: number;
+  total: number;
 }
 
 interface AppStateValue {
@@ -107,6 +243,11 @@ interface AppStateValue {
   notifications: Notification[];
   unreadCount: number;
   challengeProgress: Record<string, number>;
+  dailyXp: DailyXp;
+  coachNotes: CoachNote[];
+  savedProjects: SavedProject[];
+  rsvps: string[];
+  certificates: Certificate[];
 
   // auth
   loginAsDemo: () => void;
@@ -114,8 +255,39 @@ interface AppStateValue {
   logout: () => void;
 
   // learning
+  isCourseUnlocked: (courseId: string) => boolean;
+  isLessonUnlocked: (lessonId: string) => boolean;
   isLessonComplete: (lessonId: string) => boolean;
   completeLesson: (lessonId: string) => LessonReward;
+  skillProgress: () => SkillProgressRow[];
+
+  // hearts + answers
+  hearts: number;
+  loseHeart: () => number;
+  refillHearts: () => void;
+  recordAnswer: (correct: boolean, xp?: number) => { hearts: number };
+
+  // quests
+  questProgressFor: (dateKey: string) => QuestStatus[];
+
+  // coach + projects
+  addCoachNote: (note: { title: string; body: string; topic: string }) => void;
+  deleteCoachNote: (id: string) => void;
+  saveProject: (p: {
+    kind: string;
+    title: string;
+    summary: string;
+    data: Record<string, unknown>;
+  }) => SavedProject;
+  deleteProject: (id: string) => void;
+
+  // campus + clubs
+  toggleRsvp: (eventId: string) => void;
+  hasRsvp: (eventId: string) => boolean;
+  joinClub: (clubId: string) => void;
+  leaveClub: (clubId: string) => void;
+  toggleClub: (clubId: string) => void;
+  isClubMember: (clubId: string) => boolean;
 
   // social
   toggleLike: (postId: string) => void;
@@ -144,18 +316,35 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const repo = useMemo(() => getRepository(), []);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Recompute derived progression fields (level, badges, skills) after a
+  // state change, and apply the daily rollover (hearts refill, daily resets).
+  const reconcile = useCallback((s: Snapshot): Snapshot => {
+    const rolled = rolloverDay(s);
+    const level = levelForXp(rolled.profile.xp);
+    const badges = computeBadges(rolled.profile, rolled.portfolio.positions, {
+      dailyCorrect: rolled.dailyXp.correct,
+    });
+    const skillIds = computeSkills(rolled.profile);
+    return {
+      ...rolled,
+      profile: { ...rolled.profile, level, badges, skills: skillIds },
+    };
+  }, []);
+
   // Hydrate from persistence once on mount.
   useEffect(() => {
     let alive = true;
     repo.load().then((loaded) => {
       if (!alive) return;
-      if (loaded) setSnap(loaded);
+      // Reconcile either the loaded snapshot or the in-memory demo one so the
+      // daily rollover (hearts refill, dailyXp date) runs client-side.
+      setSnap((s) => reconcile(loaded ?? s));
       setHydrated(true);
     });
     return () => {
       alive = false;
     };
-  }, [repo]);
+  }, [repo, reconcile]);
 
   // Debounced persistence after hydration.
   useEffect(() => {
@@ -171,17 +360,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setSnap((s) => updater(s));
   }, []);
 
-  // Recompute derived progression fields (level, badges) after a state change.
-  const reconcile = useCallback((s: Snapshot): Snapshot => {
-    const level = levelForXp(s.profile.xp);
-    const badges = computeBadges(s.profile, s.portfolio.positions);
-    return { ...s, profile: { ...s.profile, level, badges } };
-  }, []);
-
   // ── Auth ─────────────────────────────────────────────────────────────────
   const loginAsDemo = useCallback(() => {
-    patch(() => ({ ...demoSnapshot(), authed: true }));
-  }, [patch]);
+    patch(() => reconcile({ ...demoSnapshot(), authed: true }));
+  }, [patch, reconcile]);
 
   const signUp = useCallback(
     (input: SignupInput) => {
@@ -211,9 +393,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         completedLessons: [],
         clubs: input.clubId ? [input.clubId] : [],
         joinedAt: new Date().toISOString(),
+        hearts: MAX_HEARTS,
+        maxHearts: MAX_HEARTS,
+        skills: [],
       };
       patch(() => ({
-        v: 1,
+        v: SNAPSHOT_VERSION,
         authed: true,
         profile: fresh,
         posts: seedPosts, // the campus feed is shared/social content
@@ -222,6 +407,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         challengeProgress: {},
         lastActiveDate: null,
         equityHistory: [],
+        heartsLastRefill: dateKey(),
+        dailyXp: freshDailyXp(),
+        questProgress: {},
+        coachNotes: [],
+        savedProjects: [],
+        rsvps: [],
+        certificates: [],
       }));
     },
     [patch],
@@ -232,16 +424,63 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     patch(() => demoSnapshot());
   }, [patch, repo]);
 
-  // ── Learning ───────────────────────────────────────────────────────────────
+  // ── Learning: locks ────────────────────────────────────────────────────────
   const isLessonComplete = useCallback(
     (lessonId: string) => snap.profile.completedLessons.includes(lessonId),
     [snap.profile.completedLessons],
   );
 
+  const isCourseUnlocked = useCallback(
+    (courseId: string) => {
+      const course = courseById(courseId);
+      if (!course) return false;
+      return snap.profile.level >= course.unlockLevel;
+    },
+    [snap.profile.level],
+  );
+
+  const isLessonUnlocked = useCallback(
+    (lessonId: string) => {
+      const done = new Set(snap.profile.completedLessons);
+      const courseLesson = courseLessonById(lessonId);
+      if (courseLesson) {
+        const flat = lessonsForCourse(courseLesson.courseId);
+        const i = flat.findIndex((l) => l.id === lessonId);
+        if (i === 0) return true; // first lesson of its course
+        return i > 0 && done.has(flat[i - 1].id);
+      }
+      // Legacy path lessons: sequential unlock in authored order.
+      const li = lessons.findIndex((l) => l.id === lessonId);
+      if (li === 0) return true;
+      return li > 0 && done.has(lessons[li - 1].id);
+    },
+    [snap.profile.completedLessons],
+  );
+
+  const skillProgress = useCallback((): SkillProgressRow[] => {
+    const done = new Set(snap.profile.completedLessons);
+    return skills
+      .map((skill) => {
+        const course = courseById(skill.courseId);
+        if (!course) return null;
+        const p = courseProgress(course.id, done);
+        return { skill, course, pct: p.pct, done: p.done, total: p.total };
+      })
+      .filter((r): r is SkillProgressRow => r !== null);
+  }, [snap.profile.completedLessons]);
+
+  // ── Learning: completion ───────────────────────────────────────────────────
   const completeLesson = useCallback(
     (lessonId: string): LessonReward => {
-      const lesson = lessonById(lessonId);
-      if (!lesson) return { xpGained: 0, leveledUp: false, newBadgeIds: [], alreadyDone: true };
+      const legacy = lessonById(lessonId);
+      const courseLesson = courseLessonById(lessonId);
+      if (!legacy && !courseLesson)
+        return { xpGained: 0, leveledUp: false, newBadgeIds: [], alreadyDone: true };
+
+      const xpBonus = courseLesson?.xp ?? legacy?.xp ?? 0;
+      const minutesSpent =
+        legacy?.minutes ??
+        Math.max(3, Math.round((courseLesson?.cards.length ?? 5) * 0.8));
 
       let reward: LessonReward = {
         xpGained: 0,
@@ -250,48 +489,294 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         alreadyDone: false,
       };
 
-      patch((s) => {
-        if (s.profile.completedLessons.includes(lessonId)) {
+      patch((raw) => {
+        if (raw.profile.completedLessons.includes(lessonId)) {
           reward = { xpGained: 0, leveledUp: false, newBadgeIds: [], alreadyDone: true };
-          return s;
+          return raw;
         }
+        const s = rolloverDay(raw);
         const prevLevel = levelForXp(s.profile.xp);
         const prevBadges = new Set(s.profile.badges);
 
         const streak = nextStreak(s.profile.streak, s.lastActiveDate);
-        const xp = s.profile.xp + lesson.xp;
+        const xp = s.profile.xp + xpBonus;
+
+        // Heart-perfect lesson: finished with a full set of hearts. Sticky
+        // event badge, computeBadges preserves it from profile.badges.
+        const perfect =
+          (s.profile.hearts ?? MAX_HEARTS) >= (s.profile.maxHearts ?? MAX_HEARTS);
+        const badgesWithEvents = perfect
+          ? Array.from(new Set([...s.profile.badges, "perfect-lesson"]))
+          : s.profile.badges;
+
         const interim: Profile = {
           ...s.profile,
           xp,
           streak,
+          badges: badgesWithEvents,
           completedLessons: [...s.profile.completedLessons, lessonId],
         };
-        const next = reconcile({ ...s, profile: interim, lastActiveDate: dateKey() });
-
-        const newBadgeIds = next.profile.badges.filter((b) => !prevBadges.has(b));
-        reward = {
-          xpGained: lesson.xp,
-          leveledUp: levelForXp(xp) > prevLevel,
-          newBadgeIds,
-          alreadyDone: false,
+        const daily: DailyXp = {
+          ...s.dailyXp,
+          xp: s.dailyXp.xp + xpBonus,
+          lessons: s.dailyXp.lessons + 1,
+          minutes: s.dailyXp.minutes + minutesSpent,
         };
 
-        // Surface a notification for each newly-earned badge.
-        const badgeNotes: Notification[] = newBadgeIds.map((id) => ({
-          id: `badge-${id}-${Date.now()}`,
-          type: "badge",
-          title: `Badge earned: ${badgeById(id)?.name ?? id}`,
-          body: badgeById(id)?.description ?? "Nice work!",
-          createdAt: new Date().toISOString(),
-          read: false,
-          href: "/profile",
-        }));
-        return { ...next, notifications: [...badgeNotes, ...next.notifications] };
+        let next = reconcile(
+          applyQuestProgress({
+            ...s,
+            profile: interim,
+            dailyXp: daily,
+            lastActiveDate: dateKey(),
+          }),
+        );
+
+        // Course completion → certificate (idempotent per course).
+        let courseCompletedId: string | undefined;
+        const notes: Notification[] = [];
+        if (courseLesson) {
+          const course = courseById(courseLesson.courseId);
+          const p = courseProgress(courseLesson.courseId, next.profile.completedLessons);
+          if (course && p.total > 0 && p.done === p.total) {
+            courseCompletedId = course.id;
+            if (!next.certificates.some((c) => c.courseId === course.id)) {
+              const cert: Certificate = {
+                id: `cert-${course.id}`,
+                courseId: course.id,
+                title: `${course.title} Certificate`,
+                earnedAt: new Date().toISOString(),
+              };
+              next = { ...next, certificates: [...next.certificates, cert] };
+              notes.push({
+                id: `cert-${course.id}-${Date.now()}`,
+                type: "badge",
+                title: `Course complete: ${course.title} 🎓`,
+                body: "You finished every lesson. Certificate added to your profile.",
+                createdAt: new Date().toISOString(),
+                read: false,
+                href: "/profile",
+              });
+            }
+          }
+        }
+
+        const newBadgeIds = next.profile.badges.filter((b) => !prevBadges.has(b));
+        const leveledUp = levelForXp(next.profile.xp) > prevLevel;
+        reward = {
+          xpGained: xpBonus,
+          leveledUp,
+          newBadgeIds,
+          alreadyDone: false,
+          unlockedLessonId: courseLesson ? nextLessonId(lessonId) : undefined,
+          courseCompletedId,
+        };
+
+        // Surface notifications for level-ups and each newly-earned badge.
+        if (leveledUp) {
+          notes.push({
+            id: `level-${levelForXp(next.profile.xp)}-${Date.now()}`,
+            type: "streak",
+            title: `Level up! You reached level ${levelForXp(next.profile.xp)} ⚡`,
+            body: "New courses may have unlocked on your Learn path.",
+            createdAt: new Date().toISOString(),
+            read: false,
+            href: "/learn",
+          });
+        }
+        for (const id of newBadgeIds) {
+          notes.push({
+            id: `badge-${id}-${Date.now()}`,
+            type: "badge",
+            title: `Badge earned: ${badgeById(id)?.name ?? id}`,
+            body: badgeById(id)?.description ?? "Nice work!",
+            createdAt: new Date().toISOString(),
+            read: false,
+            href: "/profile",
+          });
+        }
+        return { ...next, notifications: [...notes, ...next.notifications] };
       });
 
       return reward;
     },
     [patch, reconcile],
+  );
+
+  // ── Hearts + answers ───────────────────────────────────────────────────────
+  const loseHeart = useCallback((): number => {
+    let remaining = 0;
+    patch((raw) => {
+      const s = rolloverDay(raw);
+      const current = s.profile.hearts ?? MAX_HEARTS;
+      remaining = Math.max(0, current - 1);
+      return { ...s, profile: { ...s.profile, hearts: remaining } };
+    });
+    return remaining;
+  }, [patch]);
+
+  const refillHearts = useCallback(() => {
+    patch((s) => ({
+      ...s,
+      heartsLastRefill: dateKey(),
+      profile: { ...s.profile, hearts: s.profile.maxHearts ?? MAX_HEARTS },
+    }));
+  }, [patch]);
+
+  const recordAnswer = useCallback(
+    (correct: boolean, xp = 10): { hearts: number } => {
+      let hearts = 0;
+      patch((raw) => {
+        const s = rolloverDay(raw);
+        if (!correct) {
+          const remaining = Math.max(0, (s.profile.hearts ?? MAX_HEARTS) - 1);
+          hearts = remaining;
+          return { ...s, profile: { ...s.profile, hearts: remaining } };
+        }
+        hearts = s.profile.hearts ?? MAX_HEARTS;
+        const withXp: Snapshot = {
+          ...s,
+          profile: { ...s.profile, xp: s.profile.xp + xp },
+          dailyXp: {
+            ...s.dailyXp,
+            xp: s.dailyXp.xp + xp,
+            correct: s.dailyXp.correct + 1,
+          },
+        };
+        return reconcile(applyQuestProgress(withXp));
+      });
+      return { hearts };
+    },
+    [patch, reconcile],
+  );
+
+  // ── Quests ─────────────────────────────────────────────────────────────────
+  const questProgressFor = useCallback(
+    (dk: string): QuestStatus[] => {
+      const active = dailyQuestsFor(dk);
+      return active.map((quest) => {
+        const value =
+          dk === snap.dailyXp.date
+            ? Math.max(
+                metricValue(snap.dailyXp, quest.metric),
+                snap.questProgress[quest.id] ?? 0,
+              )
+            : 0;
+        return { quest, value, done: value >= quest.goal };
+      });
+    },
+    [snap.dailyXp, snap.questProgress],
+  );
+
+  // ── Coach notes + saved projects ───────────────────────────────────────────
+  const addCoachNote = useCallback(
+    (note: { title: string; body: string; topic: string }) => {
+      patch((s) => ({
+        ...s,
+        coachNotes: [
+          {
+            id: `note-${Date.now()}`,
+            title: note.title,
+            body: note.body,
+            topic: note.topic,
+            createdAt: new Date().toISOString(),
+          },
+          ...s.coachNotes,
+        ],
+      }));
+    },
+    [patch],
+  );
+
+  const deleteCoachNote = useCallback(
+    (id: string) =>
+      patch((s) => ({ ...s, coachNotes: s.coachNotes.filter((n) => n.id !== id) })),
+    [patch],
+  );
+
+  const saveProject = useCallback(
+    (p: {
+      kind: string;
+      title: string;
+      summary: string;
+      data: Record<string, unknown>;
+    }): SavedProject => {
+      const project: SavedProject = {
+        id: `proj-${Date.now()}`,
+        kind: p.kind,
+        title: p.title,
+        summary: p.summary,
+        createdAt: new Date().toISOString(),
+        data: p.data,
+      };
+      patch((s) => ({ ...s, savedProjects: [project, ...s.savedProjects] }));
+      return project;
+    },
+    [patch],
+  );
+
+  const deleteProject = useCallback(
+    (id: string) =>
+      patch((s) => ({
+        ...s,
+        savedProjects: s.savedProjects.filter((p) => p.id !== id),
+      })),
+    [patch],
+  );
+
+  // ── Campus events + clubs ──────────────────────────────────────────────────
+  const toggleRsvp = useCallback(
+    (eventId: string) =>
+      patch((s) => ({
+        ...s,
+        rsvps: s.rsvps.includes(eventId)
+          ? s.rsvps.filter((id) => id !== eventId)
+          : [...s.rsvps, eventId],
+      })),
+    [patch],
+  );
+
+  const hasRsvp = useCallback(
+    (eventId: string) => snap.rsvps.includes(eventId),
+    [snap.rsvps],
+  );
+
+  const joinClub = useCallback(
+    (clubId: string) =>
+      patch((s) =>
+        s.profile.clubs.includes(clubId)
+          ? s
+          : { ...s, profile: { ...s.profile, clubs: [...s.profile.clubs, clubId] } },
+      ),
+    [patch],
+  );
+
+  const leaveClub = useCallback(
+    (clubId: string) =>
+      patch((s) => ({
+        ...s,
+        profile: { ...s.profile, clubs: s.profile.clubs.filter((c) => c !== clubId) },
+      })),
+    [patch],
+  );
+
+  const toggleClub = useCallback(
+    (clubId: string) =>
+      patch((s) => ({
+        ...s,
+        profile: {
+          ...s.profile,
+          clubs: s.profile.clubs.includes(clubId)
+            ? s.profile.clubs.filter((c) => c !== clubId)
+            : [...s.profile.clubs, clubId],
+        },
+      })),
+    [patch],
+  );
+
+  const isClubMember = useCallback(
+    (clubId: string) => snap.profile.clubs.includes(clubId),
+    [snap.profile.clubs],
   );
 
   // ── Social ─────────────────────────────────────────────────────────────────
@@ -480,11 +965,34 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     notifications: snap.notifications,
     unreadCount: snap.notifications.filter((n) => !n.read).length,
     challengeProgress: snap.challengeProgress,
+    dailyXp: snap.dailyXp,
+    coachNotes: snap.coachNotes,
+    savedProjects: snap.savedProjects,
+    rsvps: snap.rsvps,
+    certificates: snap.certificates,
     loginAsDemo,
     signUp,
     logout,
+    isCourseUnlocked,
+    isLessonUnlocked,
     isLessonComplete,
     completeLesson,
+    skillProgress,
+    hearts: snap.profile.hearts ?? MAX_HEARTS,
+    loseHeart,
+    refillHearts,
+    recordAnswer,
+    questProgressFor,
+    addCoachNote,
+    deleteCoachNote,
+    saveProject,
+    deleteProject,
+    toggleRsvp,
+    hasRsvp,
+    joinClub,
+    leaveClub,
+    toggleClub,
+    isClubMember,
     toggleLike,
     addPost,
     addComment,

@@ -140,7 +140,7 @@ export async function searchSymbols(q: string): Promise<SymbolResult[]> {
       result?: { symbol: string; description: string; type?: string }[];
     };
     return (data.result ?? [])
-      // US common stocks / ETFs only — drop foreign/OTC dotted symbols.
+      // US common stocks / ETFs only, drop foreign/OTC dotted symbols.
       .filter((r) => r.symbol && !r.symbol.includes(".") && !r.symbol.includes(":"))
       .slice(0, 10)
       .map((r) => ({ symbol: r.symbol, description: r.description || r.symbol }));

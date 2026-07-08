@@ -1,43 +1,191 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useRef } from "react";
 import {
-  Flame,
-  TrendingUp,
-  GraduationCap,
-  Trophy,
-  Sparkles,
-  Bot,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+} from "framer-motion";
+import {
   ArrowRight,
+  Check,
+  ChevronDown,
+  Flame,
+  Heart,
+  Lock,
+  Sparkles,
   Star,
+  Wallet,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { ProgressBar } from "@/components/ui/Progress";
-import { lessons } from "@/lib/data/lessons";
-import { schools } from "@/lib/data/schools";
+import { fadeUp, staggerContainer } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
-function PreviewCard({
-  children,
-  className,
-  delay = 0,
-  float = 0,
+/* ── Lesson path mock ─────────────────────────────────────────────────────
+   A stylized, div/SVG-only rendering of the Duolingo-style lesson path.
+   Clearly labeled a product preview, no fabricated user stats. */
+
+type NodeState = "done" | "active" | "locked";
+
+const PATH_NODES: { state: NodeState; title: string; xp: string }[] = [
+  { state: "done", title: "Needs vs. wants", xp: "+40 XP" },
+  { state: "done", title: "The 50/30/20 rule", xp: "+40 XP" },
+  { state: "active", title: "Where your money goes", xp: "+50 XP" },
+  { state: "locked", title: "Emergency funds", xp: "+40 XP" },
+  { state: "locked", title: "Unit challenge", xp: "+80 XP" },
+];
+
+/* Node horizontal offsets, the gentle Duolingo weave. */
+const WEAVE = [0, 34, 10, -26, 2];
+
+function PathNode({
+  state,
+  title,
+  xp,
+  offset,
 }: {
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-  float?: number;
+  state: NodeState;
+  title: string;
+  xp: string;
+  offset: number;
 }) {
   return (
+    <div
+      className="relative flex items-center gap-3.5"
+      style={{ transform: `translateX(${offset}px)` }}
+    >
+      <div
+        className={cn(
+          "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl",
+          state === "done" && "bg-capital-gradient text-ink-950 shadow-glow",
+          state === "active" &&
+            "glow-ring animate-breathe bg-capital-gradient text-ink-950",
+          state === "locked" && "border border-white/10 bg-white/[0.04] text-white/30",
+        )}
+      >
+        {state === "done" && <Check className="h-5 w-5" strokeWidth={3} />}
+        {state === "active" && <Star className="h-5 w-5 fill-ink-950" />}
+        {state === "locked" && <Lock className="h-4 w-4" />}
+        {state === "active" && (
+          <span className="absolute -top-2.5 -right-2.5 flex h-5 items-center rounded-full bg-violet-500 px-1.5 text-[9px] font-bold text-white shadow-glow-violet">
+            START
+          </span>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p
+          className={cn(
+            "truncate text-sm font-semibold",
+            state === "locked" ? "text-white/30" : "text-white",
+          )}
+        >
+          {title}
+        </p>
+        <p
+          className={cn(
+            "text-xs",
+            state === "active" ? "text-capital-300" : "text-white/35",
+          )}
+        >
+          {xp}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LessonPathMock() {
+  return (
+    <div className="glass-hi glow-ring relative w-full max-w-sm rounded-[2rem] p-6 sm:p-7">
+      {/* Top bar: course + hearts + streak */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-capital-gradient">
+            <Wallet className="h-[18px] w-[18px] text-ink-950" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-display text-sm font-bold text-white">
+              Money Basics
+            </p>
+            <p className="text-[11px] text-white/40">Unit 1 · Budget Like a Boss</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-400">
+            <Heart className="h-3.5 w-3.5 fill-rose-400" /> 5
+          </span>
+          <span className="flex items-center gap-1 rounded-full bg-orange-400/10 px-2 py-1 text-xs font-bold text-orange-300">
+            <Flame className="h-3.5 w-3.5" /> 7
+          </span>
+        </div>
+      </div>
+
+      {/* Winding connector + nodes */}
+      <div className="relative mt-6">
+        <svg
+          viewBox="0 0 60 340"
+          className="pointer-events-none absolute left-[7px] top-0 h-full w-[46px]"
+          aria-hidden
+        >
+          <path
+            d="M16 24 C 16 60, 50 60, 50 96 C 50 132, 26 132, 26 168 C 26 204, -8 204, -8 240 Q -8 262 18 288"
+            fill="none"
+            stroke="rgba(57,245,172,0.25)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray="1 10"
+          />
+        </svg>
+        <div className="relative space-y-5">
+          {PATH_NODES.map((n, i) => (
+            <PathNode key={n.title} {...n} offset={WEAVE[i]} />
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom: progress + continue */}
+      <div className="mt-6 rounded-2xl border border-white/8 bg-white/[0.03] p-3.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-white/45">Unit progress</span>
+          <span className="font-semibold text-capital-300">2 / 5 lessons</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+          <div className="h-full w-2/5 rounded-full bg-capital-gradient" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Floating accent chips around the mock. */
+function FloatChip({
+  className,
+  float = -8,
+  duration = 5.5,
+  delay = 0,
+  children,
+}: {
+  className?: string;
+  float?: number;
+  duration?: number;
+  delay?: number;
+  children: React.ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  return (
     <motion.div
-      initial={{ opacity: 0, y: 24, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.7, delay, ease: [0.21, 0.6, 0.35, 1] }}
-      className={className}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: 0.9 + delay, type: "spring", stiffness: 260, damping: 22 }}
+      className={cn("absolute z-10", className)}
     >
       <motion.div
-        animate={{ y: [0, float, 0] }}
-        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        className="glass-strong rounded-2xl p-4 shadow-float"
+        animate={reduce ? undefined : { y: [0, float, 0] }}
+        transition={{ duration, repeat: Infinity, ease: "easeInOut", delay }}
+        className="glass-strong flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-semibold text-white shadow-float"
       >
         {children}
       </motion.div>
@@ -45,195 +193,181 @@ function PreviewCard({
   );
 }
 
-export function Hero() {
-  return (
-    <section className="relative overflow-hidden pt-36 pb-20 sm:pt-44">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[600px] bg-radial-glow" />
+/* Pointer-tracked 3D tilt, reduced-motion aware. */
+function TiltMock() {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const rx = useSpring(useTransform(my, [-0.5, 0.5], [7, -7]), {
+    stiffness: 150,
+    damping: 20,
+  });
+  const ry = useSpring(useTransform(mx, [-0.5, 0.5], [-9, 9]), {
+    stiffness: 150,
+    damping: 20,
+  });
 
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
+  function onPointerMove(e: React.PointerEvent) {
+    if (reduce || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    mx.set((e.clientX - r.left) / r.width - 0.5);
+    my.set((e.clientY - r.top) / r.height - 0.5);
+  }
+  function onPointerLeave() {
+    mx.set(0);
+    my.set(0);
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 32, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.8, delay: 0.35, ease: [0.21, 0.6, 0.35, 1] }}
+      className="relative mx-auto w-full max-w-sm"
+      style={{ perspective: 1200 }}
+    >
+      <div
+        ref={ref}
+        onPointerMove={onPointerMove}
+        onPointerLeave={onPointerLeave}
+        className="relative"
+      >
+        <motion.div style={reduce ? undefined : { rotateX: rx, rotateY: ry }}>
+          <LessonPathMock />
+        </motion.div>
+
+        <FloatChip className="-right-3 top-16 sm:-right-8" float={-9} delay={0.1}>
+          <Zap className="h-3.5 w-3.5 text-capital-300" />
+          <span className="text-capital-300">+50 XP</span>
+        </FloatChip>
+        <FloatChip className="-left-2 top-1/2 sm:-left-9" float={8} duration={6.5} delay={0.35}>
+          <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+          Perfect lesson!
+        </FloatChip>
+        <FloatChip className="-bottom-4 right-6" float={-7} duration={7} delay={0.6}>
+          <Flame className="h-3.5 w-3.5 text-orange-400" />
+          Streak +1
+        </FloatChip>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+export function Hero() {
+  const reduce = useReducedMotion();
+  return (
+    <section className="relative overflow-hidden pb-24 pt-32 sm:pt-40">
+      {/* Living backdrop: aurora + mesh + faint grid + noise */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -inset-[12%] bg-aurora animate-aurora" />
+        <div className="absolute inset-0 bg-mesh opacity-80" />
+        <div
+          className="absolute inset-0 bg-grid-faint [mask-image:radial-gradient(75%_60%_at_50%_20%,black,transparent)]"
+          style={{ backgroundSize: "56px 56px" }}
+        />
+        <div className="absolute inset-0 bg-noise" />
+        <div className="absolute inset-x-0 top-0 h-[560px] bg-radial-glow" />
+      </div>
+
+      <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.08fr_1fr] lg:gap-10">
         {/* Copy */}
-        <div>
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="show"
+          className="text-center lg:text-left"
+        >
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-capital-400/20 bg-capital-400/10 px-3.5 py-1.5 text-xs font-medium text-capital-300"
+            variants={fadeUp}
+            className="gradient-border mb-7 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-capital-300"
           >
-            <Star className="h-3.5 w-3.5 fill-capital-300" />
-            The financial network of the next generation
+            <Sparkles className="h-3.5 w-3.5" />
+            Learn money the way Duolingo taught you Spanish
           </motion.div>
 
           <motion.h1
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.05 }}
-            className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-6xl"
+            variants={fadeUp}
+            className="mx-auto max-w-2xl font-display text-5xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-6xl lg:mx-0 lg:text-7xl"
           >
-            The investing app built for{" "}
-            <span className="text-gradient-capital">students</span> before they
-            have money.
+            Master money{" "}
+            <span className="text-gradient-capital text-glow">
+              before you have any.
+            </span>
           </motion.h1>
 
           <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.12 }}
-            className="mt-6 max-w-xl text-lg leading-relaxed text-white/60"
+            variants={fadeUp}
+            className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-white/60 lg:mx-0"
           >
-            Campus Capital teaches investing through the money students actually
-            touch: internships, rent, financial aid, side hustles, scholarships,
-            student debt, and first paychecks.
+            Bite-size lessons, hearts, XP, and streaks, built around the money
+            students actually touch: rent, aid, internships, and first
+            paychecks. Practice in simulators where every mistake is free.
           </motion.p>
 
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.19 }}
-            className="mt-9 flex flex-col gap-3 sm:flex-row"
+            variants={fadeUp}
+            className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start"
           >
-            <Button href="/signup" size="lg">
-              Start Learning <ArrowRight className="h-4 w-4" />
+            <Button href="/signup" size="lg" className="w-full shadow-glow-lg sm:w-auto">
+              Start free <ArrowRight className="h-4 w-4" />
             </Button>
-            <Button href="/signup?step=3" size="lg" variant="secondary">
-              <GraduationCap className="h-4 w-4" /> Join Your Campus
+            <Button href="/login" size="lg" variant="secondary" className="w-full sm:w-auto">
+              Log in
             </Button>
           </motion.div>
 
           <motion.div
+            variants={fadeUp}
+            className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/45 lg:justify-start"
+          >
+            {["Free forever", "5-minute lessons", "$0 real money at risk"].map((t) => (
+              <span key={t} className="flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-capital-300" />
+                {t}
+              </span>
+            ))}
+          </motion.div>
+        </motion.div>
+
+        {/* Product preview */}
+        <div className="relative">
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.7, delay: 0.3 }}
-            className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm text-white/45"
+            transition={{ delay: 0.25, duration: 0.6 }}
+            className="mb-4 flex justify-center"
           >
-            <div className="flex items-center gap-2">
-              <span className="font-display text-xl font-bold text-white">{schools.length}</span>{" "}
-              campus communities
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-display text-xl font-bold text-white">{lessons.length}</span>{" "}
-              student-native lessons
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-display text-xl font-bold text-white">$0</span>{" "}
-              real money at risk
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Animated dashboard preview */}
-        <div className="relative mx-auto w-full max-w-md lg:max-w-none">
-          <div className="mb-3 flex justify-center lg:justify-start">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/45">
               <Sparkles className="h-3 w-3 text-capital-300" />
-              Preview · a new student's first day
+              Product preview · the lesson path
             </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3.5">
-            <PreviewCard delay={0.25} float={-8} className="col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/45">Campus rank</span>
-                <Trophy className="h-4 w-4 text-amber-300" />
-              </div>
-              <div className="mt-1 font-display text-2xl font-bold text-white">
-                Unranked
-              </div>
-              <div className="mt-1 text-xs text-white/40">
-                Earn XP to climb your school
-              </div>
-            </PreviewCard>
-
-            <PreviewCard delay={0.33} float={9} className="col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/45">Learning streak</span>
-                <Flame className="h-4 w-4 text-orange-400" />
-              </div>
-              <div className="mt-1 font-display text-2xl font-bold text-white">
-                Day 0
-              </div>
-              <div className="mt-2 flex gap-1">
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <div key={i} className="h-1.5 flex-1 rounded-full bg-white/10" />
-                ))}
-              </div>
-            </PreviewCard>
-
-            <PreviewCard delay={0.41} float={7} className="col-span-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-capital-300" />
-                  <span className="text-sm font-medium text-white">
-                    Portfolio simulator
-                  </span>
-                </div>
-                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/40">
-                  Mock · $0 real
-                </span>
-              </div>
-              <div className="mt-3 flex items-end justify-between">
-                <div>
-                  <div className="font-display text-2xl font-bold text-white">
-                    $10,000
-                  </div>
-                  <div className="text-xs text-white/40">Starting balance · ready to invest</div>
-                </div>
-                <svg viewBox="0 0 120 40" className="h-12 w-32">
-                  <path
-                    d="M0 30 L120 30"
-                    fill="none"
-                    stroke="#39f5ac"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeOpacity="0.45"
-                    strokeDasharray="3 5"
-                  />
-                </svg>
-              </div>
-            </PreviewCard>
-
-            <PreviewCard delay={0.49} float={-7} className="col-span-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-violet-400" />
-                <span className="text-sm font-medium text-white">
-                  Today&apos;s 5-minute lesson
-                </span>
-              </div>
-              <p className="mt-2 text-sm text-white/55">
-                What is investing, really?
-              </p>
-              <div className="mt-3 flex items-center gap-3">
-                <ProgressBar value={0} className="h-1.5" />
-                <span className="shrink-0 text-xs text-capital-300">+50 XP</span>
-              </div>
-            </PreviewCard>
-
-            <PreviewCard delay={0.57} float={8} className="col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/45">Your XP</span>
-                <Star className="h-4 w-4 fill-amber-300 text-amber-300" />
-              </div>
-              <div className="mt-1 font-display text-2xl font-bold text-white">
-                0
-              </div>
-              <div className="text-xs text-white/40">Level 1 · New investor</div>
-            </PreviewCard>
-
-            <PreviewCard delay={0.65} float={-9} className="col-span-1">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-capital-gradient">
-                  <Bot className="h-4 w-4 text-ink-950" />
-                </div>
-                <span className="text-sm font-medium text-white">
-                  Capital Coach
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-white/50">
-                &ldquo;I only have $50. Should I invest?&rdquo;
-              </p>
-              <div className="mt-1.5 text-xs text-capital-300">Ask anything →</div>
-            </PreviewCard>
-          </div>
+          </motion.div>
+          <TiltMock />
         </div>
       </div>
+
+      {/* Scroll cue */}
+      <motion.a
+        href="#stats"
+        aria-label="Scroll to see what's inside"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.4, duration: 0.8 }}
+        className="absolute bottom-5 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-white/35 transition-colors hover:text-white/70 sm:flex"
+      >
+        <span className="text-[10px] font-medium uppercase tracking-[0.2em]">
+          Explore
+        </span>
+        <motion.span
+          animate={reduce ? undefined : { y: [0, 5, 0] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </motion.span>
+      </motion.a>
     </section>
   );
 }

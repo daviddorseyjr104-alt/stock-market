@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { label: "Network", href: "#network" },
+  { label: "Courses", href: "#courses" },
   { label: "Learn", href: "#learn" },
-  { label: "Simulator", href: "#simulator" },
-  { label: "Compete", href: "#leaderboard" },
+  { label: "Simulators", href: "#simulators" },
+  { label: "Compete", href: "#compete" },
   { label: "Coach", href: "#coach" },
 ];
 
@@ -58,7 +58,7 @@ export function LandingNav() {
               Log in
             </Link>
             <Button href="/signup" size="sm">
-              Start Learning
+              Start free
             </Button>
           </div>
         </div>

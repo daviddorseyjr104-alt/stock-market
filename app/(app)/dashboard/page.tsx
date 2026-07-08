@@ -2,400 +2,573 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import * as Icons from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
+  ArrowRight,
+  Award,
   BookOpen,
+  Bot,
+  CalendarCheck,
+  Flame,
+  Heart,
+  Sparkles,
+  Target,
   TrendingUp,
   Trophy,
-  Bot,
-  Target,
-  ArrowRight,
-  Flame,
-  Eye,
-  GraduationCap,
-  ChevronRight,
+  Zap,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
-import { ProgressBar } from "@/components/ui/Progress";
-import { Avatar } from "@/components/ui/Avatar";
-import { WelcomeHero } from "@/components/dashboard/WelcomeHero";
-import { schoolById, schools } from "@/lib/data/schools";
-import { getFeed, getStudentLeaders, type FeedPost, type LeaderProfile } from "@/lib/social";
-import { modules } from "@/lib/data/modules";
-import { lessonsByModule, lessonById } from "@/lib/data/lessons";
-import { challenges } from "@/lib/data/challenges";
-import { useAppState, levelForXp } from "@/lib/store";
-import { useQuotes } from "@/lib/use-quotes";
+import { Pill } from "@/components/ui/Pill";
+import { ProgressBar, RingProgress } from "@/components/ui/Progress";
+import { StatCard } from "@/components/ui/StatCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton, CardSkeleton } from "@/components/ui/Skeleton";
+import { Reveal } from "@/components/ui/Reveal";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { XPBadge } from "@/components/game/XPBadge";
+import { HeartCounter } from "@/components/game/HeartCounter";
+import { StreakCard } from "@/components/game/StreakCard";
+import { DailyQuestCard } from "@/components/dashboard/DailyQuestCard";
+import { SkillProgressCard } from "@/components/dashboard/SkillProgressCard";
+import { NextLessonHero } from "@/components/dashboard/NextLessonHero";
+import { StreakMilestone } from "@/components/dashboard/StreakMilestone";
 import {
-  priceFromQuotes,
-  totalValue,
-  totalGain,
-  investedValue,
-  positionValue,
-  riskScore,
-  riskLabel,
-  diversificationScore,
-} from "@/lib/portfolio-utils";
-import { formatCurrency, formatPercent, timeAgo, cn } from "@/lib/utils";
+  allCourseLessons,
+  courseById,
+  courseLessonById,
+} from "@/lib/data/courses";
+import { badgeById } from "@/lib/data/badges";
+import { schoolById } from "@/lib/data/schools";
+import type { Notification } from "@/lib/types";
+import {
+  useAppState,
+  levelForXp,
+  xpProgressInLevel,
+  dateKey,
+  MAX_HEARTS,
+  XP_PER_LEVEL,
+} from "@/lib/store";
+import { cn, timeAgo } from "@/lib/utils";
 
-function nextLesson(isLessonComplete: (id: string) => boolean) {
-  for (const m of modules) {
-    for (const l of lessonsByModule(m.id)) {
-      if (!isLessonComplete(l.id)) return l;
-    }
-  }
-  return lessonById("portfolio-allocation")!;
+/** Daily XP target for the goal ring. */
+const DAILY_GOAL_XP = 50;
+
+function icon(name: string): LucideIcon {
+  return (Icons as unknown as Record<string, LucideIcon>)[name] ?? Icons.Sparkles;
 }
 
-// Real challenge progress derived from the signed-in user's state.
-const CHALLENGE_LESSON: Record<string, string> = {
-  "compound-5min": "compound-interest",
-  "roth-basics": "roth-ira",
-  "budget-builder-challenge": "budgeting-college",
-  "save-vs-invest": "saving-vs-investing",
+// A single item in the derived "Recent activity" stream.
+type Activity = {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  meta: string;
+  when: number; // epoch ms for sorting
+  href: string;
 };
-function liveProgress(
-  id: string,
-  streak: number,
-  isLessonComplete: (id: string) => boolean,
-) {
-  if (id === "7-day-streak") return Math.min(100, Math.round((streak / 7) * 100));
-  const lesson = CHALLENGE_LESSON[id];
-  if (lesson) return isLessonComplete(lesson) ? 100 : 0;
-  return 0;
-}
-
-const WATCH = [
-  { ticker: "VTI", name: "Total US Market" },
-  { ticker: "VOO", name: "S&P 500 ETF" },
-  { ticker: "SCHD", name: "Dividend ETF" },
-  { ticker: "QQQ", name: "Nasdaq-100" },
-];
 
 export default function DashboardPage() {
-  const { profile, portfolio, isLessonComplete } = useAppState();
-  const school = schoolById(profile.schoolId)!;
+  const {
+    hydrated,
+    profile,
+    dailyXp,
+    hearts,
+    notifications,
+    savedProjects,
+    certificates,
+    isLessonComplete,
+    isLessonUnlocked,
+    questProgressFor,
+    skillProgress,
+  } = useAppState();
 
-  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
-  const [students, setStudents] = useState<LeaderProfile[]>([]);
-  useEffect(() => {
-    let alive = true;
-    getFeed().then((p) => alive && setFeedPosts(p));
-    // Pull the live leaderboard now and refresh it on an interval so the
-    // campus / national rank stays current without a page reload.
-    const loadRanks = () => getStudentLeaders().then((s) => alive && setStudents(s));
-    loadRanks();
-    const id = setInterval(loadRanks, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-  const lesson = nextLesson(isLessonComplete);
-  const lessonModule = modules.find((m) => m.id === lesson.moduleId);
-  const scoredChallenges = challenges.map((c) => ({
-    c,
-    p: liveProgress(c.id, profile.streak, isLessonComplete),
-  }));
-  const featured =
-    scoredChallenges.filter((x) => x.p < 100).sort((a, b) => b.p - a.p)[0] ??
-    scoredChallenges[0];
-  const challenge = featured.c;
-  const challengeProg = featured.p;
+  // Hydration-safe greeting: SSR + first client render use a stable default,
+  // then the time-of-day greeting swaps in after mount (belt-and-braces on top
+  // of the `hydrated` gate below, which already keeps this client-only).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const greeting = mounted ? timeGreeting() : "Welcome back";
 
-  const tickers = useMemo(
-    () => Array.from(new Set([...portfolio.positions.map((p) => p.ticker), ...WATCH.map((w) => w.ticker)])),
-    [portfolio.positions],
-  );
-  const { quotes } = useQuotes(tickers, 60_000);
-  const priceOf = useMemo(() => priceFromQuotes(quotes, portfolio.positions), [quotes, portfolio.positions]);
+  const firstName = profile.fullName.split(" ")[0];
+  const level = levelForXp(profile.xp);
+  const { inLevel, pct } = xpProgressInLevel(profile.xp);
+  const school = schoolById(profile.schoolId);
+  const started = profile.completedLessons.length > 0;
 
-  const value = totalValue(portfolio, priceOf);
-  const gain = totalGain(portfolio, priceOf);
-  const invested = investedValue(portfolio.positions, priceOf);
-  const change = portfolio.positions.reduce((s, p) => s + p.shares * (quotes[p.ticker.toUpperCase()]?.change ?? 0), 0);
-  const rScore = riskScore(portfolio.positions, priceOf);
-  const dScore = diversificationScore(portfolio.positions, priceOf);
-  // Live ranks computed from real student XP (with the signed-in user merged in),
-  // recomputed whenever the leaderboard refetches or the user earns XP.
-  const { campusRank, schoolRank } = useMemo(() => {
-    const me: LeaderProfile = {
-      id: profile.id,
-      fullName: profile.fullName,
-      avatarColor: profile.avatarColor,
-      xp: profile.xp,
-      streak: profile.streak,
-      schoolId: profile.schoolId,
-      major: profile.major,
-    };
-    const roster = students.some((s) => s.id === profile.id)
-      ? students.map((s) => (s.id === profile.id ? me : s))
-      : [...students, me];
-
-    // Campus rank: my position among students at my own school.
-    const campus = roster
-      .filter((p) => p.schoolId === profile.schoolId)
-      .sort((a, b) => b.xp - a.xp)
-      .findIndex((p) => p.id === profile.id) + 1;
-
-    // National rank: my school's position by total real student XP.
-    const agg: Record<string, number> = {};
-    for (const p of roster) {
-      if (!p.schoolId) continue;
-      agg[p.schoolId] = (agg[p.schoolId] ?? 0) + p.xp;
+  // Next best action, first incomplete UNLOCKED lesson in course order.
+  const nextLesson = useMemo(() => {
+    for (const l of allCourseLessons) {
+      if (!isLessonComplete(l.id) && isLessonUnlocked(l.id)) return l;
     }
-    const national = schools
-      .map((s) => ({ id: s.id, xp: agg[s.id] ?? 0 }))
-      .sort((a, b) => b.xp - a.xp || a.id.localeCompare(b.id))
-      .findIndex((s) => s.id === school.id) + 1;
+    return undefined;
+  }, [isLessonComplete, isLessonUnlocked]);
 
-    return { campusRank: campus, schoolRank: national };
-  }, [students, profile, school.id]);
-  const feed = feedPosts
-    .filter((p) => (p.schoolId ?? p.author.schoolId) === profile.schoolId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 4);
+  // Daily quests for today.
+  const quests = useMemo(() => questProgressFor(dateKey()), [questProgressFor]);
+
+  // Skill progress.
+  const skills = useMemo(() => skillProgress(), [skillProgress]);
+
+  // Recent earned badges (newest first).
+  const earnedBadges = useMemo(
+    () =>
+      [...profile.badges]
+        .map((id) => badgeById(id))
+        .filter((b): b is NonNullable<typeof b> => Boolean(b))
+        .reverse()
+        .slice(0, 6),
+    [profile.badges],
+  );
+
+  // Recent activity, real notifications + completed lessons + saved projects.
+  const activity = useMemo<Activity[]>(() => {
+    const items: Activity[] = [];
+    for (const n of notifications as Notification[]) {
+      const t = new Date(n.createdAt).getTime();
+      items.push({
+        id: `n-${n.id}`,
+        icon: n.type === "badge" ? Award : n.type === "streak" ? Flame : Sparkles,
+        title: n.title,
+        meta: n.body,
+        when: Number.isFinite(t) ? t : 0,
+        href: n.href ?? "/notifications",
+      });
+    }
+    for (const l of profile.completedLessons) {
+      const cl = courseLessonById(l);
+      if (!cl) continue;
+      const course = courseById(cl.courseId);
+      items.push({
+        id: `l-${l}`,
+        icon: BookOpen,
+        title: `Completed “${cl.title}”`,
+        meta: `${course?.title ?? "Course"} · +${cl.xp} XP`,
+        when: 0, // no timestamp stored; ordered after timestamped items
+        href: `/learn/lesson/${l}`,
+      });
+    }
+    for (const p of savedProjects) {
+      const t = new Date(p.createdAt).getTime();
+      items.push({
+        id: `p-${p.id}`,
+        icon: Icons.FolderKanban,
+        title: `Saved “${p.title}”`,
+        meta: p.summary,
+        when: Number.isFinite(t) ? t : 0,
+        href: "/profile",
+      });
+    }
+    return items.sort((a, b) => b.when - a.when).slice(0, 6);
+  }, [notifications, profile.completedLessons, savedProjects]);
+
+  if (!hydrated) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">
-      <WelcomeHero
-        firstName={profile.fullName.split(" ")[0]}
-        level={levelForXp(profile.xp)}
-        xp={profile.xp}
-        streak={profile.streak}
-        schoolName={school.shortName}
-        nextMove={{
-          label: lesson.title,
-          href: `/learn/${lesson.id}`,
-          reason: `Today's 5-minute lesson · +${lesson.xp} XP`,
-        }}
-      />
+      {/* Streak milestone celebration, only fires on real streak values */}
+      <StreakMilestone streak={profile.streak} />
+
+      {/* Dynamic greeting */}
+      <Reveal>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm text-white/45">
+              {school?.shortName ?? "Campus"} · {profile.major}
+            </p>
+            <h1 className="mt-0.5 font-display text-3xl font-bold tracking-tight text-white">
+              {greeting}, <span className="text-gradient-capital">{firstName}</span>
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <XPBadge value={profile.xp} />
+            <HeartCounter hearts={hearts} max={profile.maxHearts ?? MAX_HEARTS} />
+          </div>
+        </div>
+      </Reveal>
+
+      {/* Next-best-action hero + animated daily goal ring */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Reveal delay={0.05} className="lg:col-span-2">
+          <NextLessonHero lesson={nextLesson} started={started} />
+        </Reveal>
+        <Reveal delay={0.1} className="h-full">
+          <DailyGoalCard xpToday={dailyXp.xp} lessonsToday={dailyXp.lessons} correctToday={dailyXp.correct} />
+        </Reveal>
+      </div>
+
+      {/* Momentum row */}
+      <Reveal delay={0.1}>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StreakCard streak={profile.streak} className="h-full" />
+          <StatCard
+            label="Level"
+            value={
+              <span className="flex items-baseline gap-2">
+                <AnimatedNumber value={level} />
+                <span className="text-xs font-medium text-white/40">
+                  {inLevel}/{XP_PER_LEVEL} XP
+                </span>
+              </span>
+            }
+            sub={<ProgressBar value={pct} className="mt-1.5 h-1.5" />}
+            icon={<TrendingUp className="h-4 w-4" />}
+            tone="capital"
+          />
+          <StatCard
+            label="Total XP"
+            value={<AnimatedNumber value={profile.xp} />}
+            sub="Lifetime earned"
+            icon={<Zap className="h-4 w-4" fill="currentColor" />}
+            tone="violet"
+          />
+          <StatCard
+            label="Hearts"
+            value={<HeartCounter hearts={hearts} max={profile.maxHearts ?? MAX_HEARTS} />}
+            sub="Refill every day"
+            icon={<Heart className="h-4 w-4" fill="currentColor" />}
+            tone="rose"
+          />
+        </div>
+      </Reveal>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left + center column */}
+        {/* Left + center */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Today's lesson */}
-          <Card hover>
-            <CardHeader
-              title="Today's 5-minute lesson"
-              subtitle={`${lessonModule?.title} · ${lesson.difficulty}`}
-              icon={<BookOpen className="h-4 w-4" />}
-              action={<Pill tone="capital">+{lesson.xp} XP</Pill>}
-            />
-            <h3 className="font-display text-xl font-semibold text-white">{lesson.title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-white/55">{lesson.summary}</p>
-            <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-sm text-white/65">
-              <span className="text-capital-300">Student-life example · </span>
-              {lesson.studentExample}
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <Button href={`/learn/${lesson.id}`}>
-                Start lesson <ArrowRight className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-white/45">{lesson.minutes} min</span>
-            </div>
-          </Card>
-
-          {/* Portfolio snapshot */}
-          <Card hover>
-            <CardHeader
-              title="Your mock portfolio"
-              subtitle="Educational simulation · $0 real money"
-              icon={<TrendingUp className="h-4 w-4" />}
-              action={
-                <Link href="/simulator" className="text-sm text-capital-300 hover:underline">
-                  Open simulator →
-                </Link>
-              }
-            />
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="font-display text-3xl font-bold text-white">
-                  {formatCurrency(value, { maximumFractionDigits: 0 })}
-                </div>
-                <div className={cn("text-sm font-medium", change >= 0 ? "text-capital-300" : "text-rose-400")}>
-                  {change >= 0 ? "+" : ""}
-                  {formatCurrency(change)} today
-                </div>
-                <div className="text-xs text-white/40">
-                  All-time {gain.abs >= 0 ? "+" : ""}
-                  {formatCurrency(gain.abs)} ({formatPercent(gain.pct)})
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <MiniStat label="Risk" value={riskLabel(rScore)} tone="amber" />
-                <MiniStat label="Diversification" value={`${dScore}/100`} tone="capital" />
-              </div>
-            </div>
-            <div className="mt-4 space-y-2">
-              {portfolio.positions.slice(0, 3).map((p) => {
-                const pct = invested > 0 ? (positionValue(p, priceOf) / invested) * 100 : 0;
-                return (
-                  <div key={p.id} className="flex items-center gap-3">
-                    <span className="w-12 font-mono text-xs font-semibold text-white/70">{p.ticker}</span>
-                    <ProgressBar value={pct} className="h-1.5 flex-1" />
-                    <span className="w-9 text-right text-xs text-white/45">{pct.toFixed(0)}%</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-
-          {/* Campus activity feed */}
-          <Card>
-            <CardHeader
-              title="What students at your school are learning"
-              subtitle={`${school.shortName} campus feed`}
-              icon={<GraduationCap className="h-4 w-4" />}
-              action={
-                <Link href="/campus" className="text-sm text-capital-300 hover:underline">
-                  View all →
-                </Link>
-              }
-            />
-            {feed.length > 0 ? (
-              <div className="space-y-3">
-                {feed.map((post) => (
-                  <Link
-                    key={post.id}
-                    href="/campus"
-                    className="flex gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.03]"
-                  >
-                    <Avatar name={post.author.name} gradient={post.author.avatarColor} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm">
-                        <span className="font-semibold text-white">{post.author.name}</span>{" "}
-                        <span className="text-white/40">· {timeAgo(post.createdAt)}</span>
-                      </p>
-                      <p className="line-clamp-2 text-sm text-white/55">{post.body}</p>
-                    </div>
-                  </Link>
+          {/* Daily quests */}
+          <Reveal delay={0.05}>
+            <Card hover>
+              <CardHeader
+                title="Daily quests"
+                subtitle="Reset every day · earn bonus XP"
+                icon={<Target className="h-4 w-4" />}
+                action={
+                  <Pill tone="capital">
+                    {quests.filter((q) => q.done).length}/{quests.length} done
+                  </Pill>
+                }
+              />
+              <div className="space-y-2.5">
+                {quests.map((q) => (
+                  <DailyQuestCard key={q.quest.id} quest={q.quest} value={q.value} done={q.done} />
                 ))}
               </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center">
-                <p className="text-sm text-white/55">No campus posts yet.</p>
-                <Link href="/campus" className="mt-1 inline-block text-sm font-semibold text-capital-300 hover:underline">
-                  Be the first to post →
-                </Link>
+            </Card>
+          </Reveal>
+
+          {/* Skill progress */}
+          <Reveal delay={0.1}>
+            <Card>
+              <CardHeader
+                title="Skill progress"
+                subtitle="Your mastery across all 8 courses"
+                icon={<Sparkles className="h-4 w-4" />}
+                action={
+                  <Link href="/learn" className="text-sm text-capital-300 hover:underline">
+                    All courses →
+                  </Link>
+                }
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {skills.map((row) => (
+                  <SkillProgressCard key={row.skill.id} row={row} />
+                ))}
               </div>
-            )}
-          </Card>
+            </Card>
+          </Reveal>
+
+          {/* Recent activity */}
+          <Reveal delay={0.15}>
+            <Card>
+              <CardHeader
+                title="Recent activity"
+                subtitle="Your latest wins"
+                icon={<CalendarCheck className="h-4 w-4" />}
+              />
+              {activity.length > 0 ? (
+                <div className="space-y-1">
+                  {activity.map((a) => {
+                    const Ic = a.icon;
+                    return (
+                      <Link
+                        key={a.id}
+                        href={a.href}
+                        className="flex items-start gap-3 rounded-2xl px-2 py-2.5 transition-colors hover:bg-white/[0.03]"
+                      >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/5 text-capital-300">
+                          <Ic className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white">{a.title}</p>
+                          <p className="truncate text-xs text-white/45">{a.meta}</p>
+                        </div>
+                        {a.when > 0 && (
+                          <span className="shrink-0 text-xs text-white/35">
+                            {timeAgo(new Date(a.when).toISOString())}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Sparkles className="h-7 w-7" />}
+                  title="Nothing here yet"
+                  description="Your wins, finished lessons, badges, saved projects, will show up here as you go."
+                  action={
+                    <Button href="/learn" size="sm">
+                      Finish your first lesson <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              )}
+            </Card>
+          </Reveal>
         </div>
 
-        {/* Right column */}
+        {/* Right rail */}
         <div className="space-y-6">
-          {/* Rank card */}
-          <Card hover glow>
-            <CardHeader title="Your campus rank" icon={<Trophy className="h-4 w-4" />} />
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-display text-4xl font-bold text-gradient-capital">
-                  {campusRank > 0 ? `#${campusRank}` : "Climbing"}
+          {/* Honest campus standing, no fabricated ranks */}
+          <Reveal delay={0.05}>
+            <Card hover glow>
+              <CardHeader
+                title="Campus standing"
+                subtitle="Real progress only"
+                icon={<Trophy className="h-4 w-4" />}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.02] px-3.5 py-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-white/40">
+                    Your XP
+                  </p>
+                  <p className="mt-1 font-display text-2xl font-bold text-gradient-capital">
+                    <AnimatedNumber value={profile.xp} />
+                  </p>
                 </div>
-                <p className="text-sm text-white/45">at {school.shortName}</p>
+                <div className="rounded-2xl border border-white/8 bg-white/[0.02] px-3.5 py-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-white/40">
+                    Streak
+                  </p>
+                  <p className="mt-1 font-display text-2xl font-bold text-white">
+                    <AnimatedNumber value={profile.streak} />
+                    <span className="ml-1 text-sm font-semibold text-white/50">
+                      day{profile.streak === 1 ? "" : "s"}
+                    </span>
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="font-display text-2xl font-bold text-white">#{schoolRank}</div>
-                <p className="text-xs text-white/45">school nationally</p>
+              <p className="mt-3 text-sm leading-relaxed text-white/55">
+                You&apos;re building your standing, every lesson counts. Invite your
+                campus and climb together.
+              </p>
+              <div className="mt-4 flex flex-col gap-2">
+                <Button href="/leaderboards" variant="secondary" size="sm" className="w-full">
+                  See leaderboards <ArrowRight className="h-4 w-4" />
+                </Button>
+                <Button href="/campus" variant="ghost" size="sm" className="w-full">
+                  Invite your campus
+                </Button>
               </div>
-            </div>
-            <Link
-              href="/leaderboards"
-              className="mt-4 flex items-center justify-between rounded-2xl bg-white/[0.03] px-3.5 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/[0.06]"
-            >
-              See leaderboards
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </Card>
+            </Card>
+          </Reveal>
 
-          {/* Weekly challenge */}
-          <Card hover>
-            <CardHeader
-              title="Complete your weekly challenge"
-              icon={<Target className="h-4 w-4" />}
-              action={<Pill tone="violet">+{challenge.xp} XP</Pill>}
-            />
-            <h3 className="font-display font-semibold text-white">{challenge.title}</h3>
-            <p className="mt-1 text-sm text-white/50">{challenge.goal}</p>
-            <div className="mt-3 flex items-center justify-between text-xs text-white/45">
-              <span>{challengeProg}% complete</span>
-              <span className="inline-flex items-center gap-1">
-                <Flame className="h-3 w-3 text-orange-400" /> {challenge.deadlineDays}d left
-              </span>
-            </div>
-            <ProgressBar value={challengeProg} className="mt-2" />
-            <Button href="/challenges" variant="outline" size="sm" className="mt-4 w-full">
-              View challenges
-            </Button>
-          </Card>
+          {/* Achievements */}
+          <Reveal delay={0.1}>
+            <Card hover>
+              <CardHeader
+                title="Achievements"
+                subtitle={`${profile.badges.length} badge${profile.badges.length === 1 ? "" : "s"} earned`}
+                icon={<Award className="h-4 w-4" />}
+                action={
+                  <Link href="/profile" className="text-sm text-capital-300 hover:underline">
+                    View all →
+                  </Link>
+                }
+              />
+              {earnedBadges.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {earnedBadges.map((b) => {
+                    const Ic = icon(b.icon);
+                    return (
+                      <Link
+                        key={b.id}
+                        href="/profile"
+                        className="group flex flex-col items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.02] px-2 py-3 text-center transition-colors hover:border-white/15"
+                        title={b.description}
+                      >
+                        <span
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br text-ink-950 shadow-card",
+                            b.color,
+                          )}
+                        >
+                          <Ic className="h-5 w-5" />
+                        </span>
+                        <span className="line-clamp-2 text-[11px] font-medium leading-tight text-white/70 group-hover:text-white">
+                          {b.name}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center">
+                  <p className="text-sm text-white/55">No badges yet.</p>
+                  <Link
+                    href="/learn"
+                    className="mt-1 inline-block text-sm font-semibold text-capital-300 hover:underline"
+                  >
+                    Earn your first →
+                  </Link>
+                </div>
+              )}
+            </Card>
+          </Reveal>
+
+          {/* Certificates (real state) */}
+          {certificates.length > 0 && (
+            <Reveal delay={0.15}>
+              <Card hover>
+                <CardHeader
+                  title="Certificates"
+                  subtitle={`${certificates.length} course${certificates.length === 1 ? "" : "s"} completed`}
+                  icon={<Icons.ScrollText className="h-4 w-4" />}
+                  action={
+                    <Link href="/profile" className="text-sm text-capital-300 hover:underline">
+                      Profile →
+                    </Link>
+                  }
+                />
+                <div className="space-y-2">
+                  {certificates.slice(0, 3).map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-white/[0.02] px-3 py-2"
+                    >
+                      <Icons.Medal className="h-4 w-4 shrink-0 text-amber-300" />
+                      <span className="truncate text-sm text-white/80">{c.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </Reveal>
+          )}
 
           {/* Ask Capital Coach */}
-          <Card hover>
-            <CardHeader title="Ask Capital Coach" icon={<Bot className="h-4 w-4" />} />
-            <p className="text-sm text-white/55">
-              Stuck on something about money? Ask in plain language.
-            </p>
-            <Link
-              href="/coach"
-              className="mt-3 block rounded-2xl border border-white/10 bg-white/[0.02] px-3.5 py-3 text-sm text-white/45 transition-colors hover:border-capital-400/40"
-            >
-              &ldquo;I only have $50. Should I invest?&rdquo;
-            </Link>
-            <Button href="/coach" size="sm" className="mt-3 w-full">
-              Open Capital Coach <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Card>
-
-          {/* Watchlist */}
-          <Card>
-            <CardHeader title="Watchlist" subtitle="Tracked for learning" icon={<Eye className="h-4 w-4" />} />
-            <div className="space-y-1">
-              {WATCH.map((w) => {
-                const q = quotes[w.ticker.toUpperCase()];
-                return (
-                  <Link key={w.ticker} href="/simulator" className="flex items-center justify-between rounded-xl px-2 py-2 hover:bg-white/[0.03]">
-                    <div>
-                      <p className="font-mono text-sm font-semibold text-white">{w.ticker}</p>
-                      <p className="text-xs text-white/40">{w.name}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-white">{q ? formatCurrency(q.price, { maximumFractionDigits: 2 }) : "..."}</p>
-                      {q && (
-                        <p className={cn("text-xs font-medium", q.changePct >= 0 ? "text-capital-300" : "text-rose-400")}>
-                          {formatPercent(q.changePct)}
-                        </p>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-center text-[11px] text-white/30">
-              {quotes[WATCH[0].ticker]?.live ? "Live market prices" : "Simulated prices · educational only"}
-            </p>
-          </Card>
+          <Reveal delay={0.2}>
+            <Card hover>
+              <CardHeader title="Ask Capital Coach" icon={<Bot className="h-4 w-4" />} />
+              <p className="text-sm text-white/55">
+                Stuck on a money question? Ask in plain language.
+              </p>
+              <Button href="/coach" size="sm" className="mt-3 w-full">
+                Open Capital Coach <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Card>
+          </Reveal>
         </div>
       </div>
     </div>
   );
 }
 
-function MiniStat({
-  label,
-  value,
-  tone,
+function timeGreeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+/**
+ * Animated daily-goal ring: fills from 0 → today's progress on mount.
+ * Goal is DAILY_GOAL_XP; copy adapts as the user closes the gap.
+ */
+function DailyGoalCard({
+  xpToday,
+  lessonsToday,
+  correctToday,
 }: {
-  label: string;
-  value: string;
-  tone: "amber" | "capital";
+  xpToday: number;
+  lessonsToday: number;
+  correctToday: number;
 }) {
-  const color = tone === "amber" ? "text-amber-300" : "text-capital-300";
+  const goalPct = Math.min(100, (xpToday / DAILY_GOAL_XP) * 100);
+  const remaining = Math.max(0, DAILY_GOAL_XP - xpToday);
+  const hit = remaining === 0;
+
+  // Start at 0 and set the real value just after mount so the ring's CSS
+  // stroke transition animates the fill in.
+  const [ringValue, setRingValue] = useState(0);
+  useEffect(() => {
+    const t = window.setTimeout(() => setRingValue(goalPct), 180);
+    return () => window.clearTimeout(t);
+  }, [goalPct]);
+
   return (
-    <div className="rounded-2xl bg-white/[0.03] px-3 py-2 text-center">
-      <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
-      <p className={cn("font-display text-sm font-bold", color)}>{value}</p>
+    <Card glow className="flex h-full flex-col items-center justify-center p-6 text-center">
+      <p className="text-xs font-bold uppercase tracking-wider text-white/40">
+        Today&apos;s goal
+      </p>
+      <div className="mt-4">
+        <RingProgress value={ringValue} size={132} stroke={11}>
+          <div className="text-center">
+            <div className="font-display text-3xl font-bold text-white">
+              <AnimatedNumber value={xpToday} />
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-white/40">
+              / {DAILY_GOAL_XP} XP
+            </div>
+          </div>
+        </RingProgress>
+      </div>
+      <p className={cn("mt-4 text-sm font-semibold", hit ? "text-capital-300" : "text-white")}>
+        {hit ? "Goal crushed, keep the momentum 🎉" : `${remaining} XP to go today`}
+      </p>
+      <p className="mt-1 text-xs text-white/45">
+        {lessonsToday} lesson{lessonsToday === 1 ? "" : "s"} · {correctToday} correct answer
+        {correctToday === 1 ? "" : "s"} today
+      </p>
+      {!hit && (
+        <Button href="/learn" variant="ghost" size="sm" className="mt-3">
+          Earn it now <ArrowRight className="h-4 w-4" />
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-8 w-72" />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <CardSkeleton />
+        </div>
+        <div className="glass flex items-center justify-center rounded-3xl p-6">
+          <Skeleton className="h-32 w-32 rounded-full" />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Skeleton className="h-20 rounded-3xl" />
+        <Skeleton className="h-20 rounded-3xl" />
+        <Skeleton className="h-20 rounded-3xl" />
+        <Skeleton className="h-20 rounded-3xl" />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+        <div className="space-y-6">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
     </div>
   );
 }

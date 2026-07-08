@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import { ChevronUp, ChevronDown, Minus } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Pill } from "@/components/ui/Pill";
@@ -5,6 +8,15 @@ import { cn, formatCompact } from "@/lib/utils";
 import type { LeaderRow } from "@/lib/types";
 
 const MEDALS: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
+
+const rowVariants = {
+  hidden: { opacity: 0, y: 12 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, delay: Math.min(i * 0.05, 0.45), ease: [0.21, 0.6, 0.35, 1] as const },
+  }),
+};
 
 function RankBadge({ rank }: { rank: number }) {
   if (MEDALS[rank]) {
@@ -51,7 +63,7 @@ function Delta({ delta }: { delta: number }) {
 function formatValue(xp: number, unit?: string) {
   // Large counts read better compact; small counts (days, %, returns) read literal.
   const value =
-    unit === "days" || unit === "%" || unit === "% return"
+    unit === "days" || unit === "%" || unit === "% return" || unit === "members"
       ? xp.toLocaleString()
       : formatCompact(xp);
   return unit ? `${value} ${unit}` : value;
@@ -60,6 +72,8 @@ function formatValue(xp: number, unit?: string) {
 /**
  * Presentational leaderboard. Stateless, pass in any LeaderRow[] and an
  * optional unit label for the value column ("XP", "days", "%", "% return").
+ * Rows stagger-reveal on mount, key the component (e.g. by board id) to
+ * replay the animation when the board changes.
  */
 export function LeaderRows({
   rows,
@@ -72,13 +86,18 @@ export function LeaderRows({
 }) {
   return (
     <ul className="space-y-1.5">
-      {rows.map((row) => {
+      {rows.map((row, i) => {
         const isTop3 = row.rank <= 3;
         return (
-          <li
+          <motion.li
             key={`${row.rank}-${row.name}`}
+            custom={i}
+            variants={rowVariants}
+            initial="hidden"
+            animate="show"
             className={cn(
               "group flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-white/[0.04]",
+              isTop3 && "sheen",
               row.highlight &&
                 "border-capital-400/25 bg-capital-400/[0.07] hover:border-capital-400/40 hover:bg-capital-400/10",
             )}
@@ -123,7 +142,7 @@ export function LeaderRows({
               </span>
               <Delta delta={row.delta} />
             </div>
-          </li>
+          </motion.li>
         );
       })}
     </ul>

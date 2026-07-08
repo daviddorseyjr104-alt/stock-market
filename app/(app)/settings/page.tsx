@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
   Check,
   LogOut,
   Mail,
+  Palette,
   Sparkles,
   User,
 } from "lucide-react";
@@ -14,10 +16,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
+import { Avatar } from "@/components/ui/Avatar";
 import { Disclaimer } from "@/components/ui/Disclaimer";
+import { Reveal } from "@/components/ui/Reveal";
+import { CardSkeleton, Skeleton } from "@/components/ui/Skeleton";
+import { springSoft } from "@/lib/motion";
 import { useAppState } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Goal, InvestingLevel, Interest } from "@/lib/types";
+import type { Goal, InvestingLevel, Interest, Profile } from "@/lib/types";
 
 const investingLevels: InvestingLevel[] = [
   "beginner",
@@ -48,6 +54,45 @@ const allInterests: Interest[] = [
   "Economic news",
 ];
 
+/** Same palette family as `gradientFor`, persisted via updateProfile. */
+const avatarGradients = [
+  "from-capital-400 to-violet-500",
+  "from-violet-500 to-capital-400",
+  "from-sky-400 to-capital-400",
+  "from-amber-400 to-capital-500",
+  "from-rose-400 to-violet-500",
+  "from-capital-300 to-sky-500",
+  "from-fuchsia-500 to-capital-400",
+];
+
+/* Notification preferences persist on this device (localStorage). */
+const NOTIFY_KEY = "cc_notify_prefs_v1";
+
+interface NotifyPrefs {
+  streak: boolean;
+  lessons: boolean;
+  social: boolean;
+  rank: boolean;
+}
+
+const DEFAULT_NOTIFY: NotifyPrefs = {
+  streak: true,
+  lessons: true,
+  social: true,
+  rank: false,
+};
+
+function loadNotifyPrefs(): NotifyPrefs {
+  if (typeof window === "undefined") return DEFAULT_NOTIFY;
+  try {
+    const raw = window.localStorage.getItem(NOTIFY_KEY);
+    if (raw) return { ...DEFAULT_NOTIFY, ...(JSON.parse(raw) as Partial<NotifyPrefs>) };
+  } catch {
+    /* corrupted prefs → defaults */
+  }
+  return DEFAULT_NOTIFY;
+}
+
 const fieldClass =
   "w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-white/35 transition-colors focus:border-capital-400/40 focus:bg-white/[0.05] focus:outline-none focus-visible:ring-focus";
 
@@ -60,8 +105,24 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 
 export default function SettingsPage() {
+  const { hydrated, profile } = useAppState();
+
+  return (
+    <div>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your profile, learning, and notifications."
+      />
+      {/* The form initializes local state from the persisted profile, so it
+          only mounts once hydration has finished. */}
+      {hydrated ? <SettingsForm profile={profile} /> : <SettingsSkeleton />}
+    </div>
+  );
+}
+
+function SettingsForm({ profile }: { profile: Profile }) {
   const router = useRouter();
-  const { profile, updateProfile, logout } = useAppState();
+  const { updateProfile, logout } = useAppState();
 
   // Profile section
   const [fullName, setFullName] = useState(profile.fullName);
@@ -75,13 +136,19 @@ export default function SettingsPage() {
   const [goal, setGoal] = useState<Goal>(profile.goal);
   const [interests, setInterests] = useState<Interest[]>(profile.interests);
 
-  // Notification toggles
-  const [notify, setNotify] = useState({
-    streak: true,
-    lessons: true,
-    social: true,
-    rank: false,
-  });
+  // Notification toggles, real device preferences, persisted locally.
+  const [notify, setNotifyState] = useState<NotifyPrefs>(loadNotifyPrefs);
+  const setNotify = (key: keyof NotifyPrefs, value: boolean) => {
+    setNotifyState((prev) => {
+      const next = { ...prev, [key]: value };
+      try {
+        window.localStorage.setItem(NOTIFY_KEY, JSON.stringify(next));
+      } catch {
+        /* storage may be unavailable; the toggle still works this session */
+      }
+      return next;
+    });
+  };
 
   const toggleInterest = (interest: Interest) => {
     const next = interests.includes(interest)
@@ -108,17 +175,54 @@ export default function SettingsPage() {
   };
 
   return (
-    <div>
-      <PageHeader title="Settings" subtitle="Manage your profile, learning, and notifications." />
-
-      <div className="space-y-6">
-        {/* Profile */}
+    <div className="space-y-6">
+      {/* Profile */}
+      <Reveal>
         <Card>
           <CardHeader
             title="Profile"
             subtitle="How you appear across Campus Capital"
             icon={<User className="h-4 w-4" />}
           />
+
+          {/* Avatar + color */}
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="gradient-border glow-ring inline-block shrink-0 self-start rounded-full p-1.5">
+              <Avatar
+                name={fullName || profile.fullName}
+                gradient={profile.avatarColor}
+                size="lg"
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">
+                <Palette className="h-3.5 w-3.5" />
+                Avatar color
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {avatarGradients.map((g) => {
+                  const active = profile.avatarColor === g;
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => updateProfile({ avatarColor: g })}
+                      aria-label={`Avatar color ${g.replace(/from-|to-/g, "").replace("-", " ")}`}
+                      aria-pressed={active}
+                      className={cn(
+                        "h-9 w-9 rounded-full bg-gradient-to-br transition-all duration-200 focus-visible:ring-focus",
+                        g,
+                        active
+                          ? "scale-110 ring-2 ring-white/80 ring-offset-2 ring-offset-ink-950 shadow-glow"
+                          : "opacity-70 hover:scale-105 hover:opacity-100",
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Full name</Label>
@@ -157,20 +261,30 @@ export default function SettingsPage() {
           </div>
           <div className="mt-5 flex items-center gap-3">
             <Button onClick={saveProfile}>Save changes</Button>
-            {profileSaved && (
-              <span className="inline-flex items-center gap-1.5 text-sm text-capital-300">
-                <Check className="h-4 w-4" />
-                Saved
-              </span>
-            )}
+            <AnimatePresence>
+              {profileSaved && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.7, y: 4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={springSoft}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-capital-300"
+                >
+                  <Check className="h-4 w-4" strokeWidth={3} />
+                  Saved
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
         </Card>
+      </Reveal>
 
-        {/* Learning preferences */}
+      {/* Learning preferences */}
+      <Reveal delay={0.05}>
         <Card>
           <CardHeader
             title="Learning preferences"
-            subtitle="Tailor lessons and recommendations to you"
+            subtitle="Tailor lessons and recommendations to you, saved instantly"
             icon={<Sparkles className="h-4 w-4" />}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -222,10 +336,11 @@ export default function SettingsPage() {
                     key={interest}
                     type="button"
                     onClick={() => toggleInterest(interest)}
+                    aria-pressed={active}
                     className={cn(
-                      "rounded-full border px-3 py-1.5 text-sm transition-all duration-200",
+                      "rounded-full border px-3 py-1.5 text-sm transition-all duration-200 focus-visible:ring-focus",
                       active
-                        ? "border-transparent bg-capital-gradient font-medium text-ink-950 shadow-[0_0_14px_rgba(57,245,172,0.35)]"
+                        ? "border-transparent bg-capital-gradient font-medium text-ink-950 shadow-glow"
                         : "border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:text-white",
                     )}
                   >
@@ -236,12 +351,14 @@ export default function SettingsPage() {
             </div>
           </div>
         </Card>
+      </Reveal>
 
-        {/* Notifications */}
+      {/* Notifications */}
+      <Reveal delay={0.1}>
         <Card>
           <CardHeader
             title="Notifications"
-            subtitle="Choose what we ping you about"
+            subtitle="Choose what we ping you about, saved on this device"
             icon={<Bell className="h-4 w-4" />}
           />
           <div className="divide-y divide-white/5">
@@ -279,17 +396,17 @@ export default function SettingsPage() {
                 </div>
                 <Toggle
                   checked={notify[row.key]}
-                  onChange={(next) =>
-                    setNotify((prev) => ({ ...prev, [row.key]: next }))
-                  }
+                  onChange={(next) => setNotify(row.key, next)}
                   label={row.title}
                 />
               </div>
             ))}
           </div>
         </Card>
+      </Reveal>
 
-        {/* Account */}
+      {/* Account */}
+      <Reveal delay={0.15}>
         <Card>
           <CardHeader
             title="Account"
@@ -306,21 +423,45 @@ export default function SettingsPage() {
             </div>
 
             <Disclaimer>
-              <strong className="font-semibold text-white/60">
-                Demo mode.
-              </strong>{" "}
+              <strong className="font-semibold text-white/60">Demo mode.</strong>{" "}
               No Supabase keys are configured, so Campus Capital is running as a
-              local demo. Your edits here update the current session only and
-              aren&apos;t saved to a real account.
+              local demo. Your edits are saved on this device only and
+              aren&apos;t synced to a real account.
             </Disclaimer>
 
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-              Log out
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="secondary" href="/profile">
+                <User className="h-4 w-4" />
+                View profile
+              </Button>
+              <Button variant="outline" onClick={handleLogout}>
+                <LogOut className="h-4 w-4" />
+                Log out
+              </Button>
+            </div>
           </div>
         </Card>
+      </Reveal>
+    </div>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="glass space-y-4 rounded-3xl p-5">
+        <Skeleton className="h-6 w-40" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-16 w-16 rounded-full" />
+          <Skeleton className="h-9 w-64" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Skeleton className="h-11 rounded-2xl" />
+          <Skeleton className="h-11 rounded-2xl" />
+        </div>
       </div>
+      <CardSkeleton />
+      <CardSkeleton />
     </div>
   );
 }

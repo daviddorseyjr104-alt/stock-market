@@ -1,495 +1,649 @@
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  GraduationCap,
-  BookOpen,
-  Users,
-  Flame,
-  TrendingUp,
-  Bot,
-  Trophy,
-  Wallet,
-  Building2,
-  Megaphone,
-  Crown,
-  Network,
   ArrowRight,
-  Quote,
-  CheckCircle2,
-  XCircle,
+  BookOpen,
+  Bot,
+  Briefcase,
+  Building2,
+  CandlestickChart,
+  Check,
+  CreditCard,
+  Crown,
+  Flame,
+  GraduationCap,
+  Handshake,
+  Heart,
+  Landmark,
+  LineChart,
+  Presentation,
+  Rocket,
+  Sparkles,
+  Tags,
+  TrendingUp,
+  Trophy,
+  Users,
+  Wallet,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
-import { Reveal } from "@/components/ui/Reveal";
-import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
-import { schools } from "@/lib/data/schools";
-import { lessons } from "@/lib/data/lessons";
+import { Pill } from "@/components/ui/Pill";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { sims } from "@/components/sim/registry";
+import { fadeUp, pop, staggerContainer, viewportOnce } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import { CoachDemo } from "./CoachDemo";
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/* Icon names stored in data → components (course + sim registries). */
+const ICONS: Record<string, LucideIcon> = {
+  Wallet,
+  CreditCard,
+  LineChart,
+  Building2,
+  Rocket,
+  Handshake,
+  Briefcase,
+  Landmark,
+  CandlestickChart,
+  Tags,
+  Presentation,
+};
+
+/* Data passed down from the server page so course content stays out of the
+   client bundle. Every number is computed from the real catalog. */
+export interface LandingStats {
+  courses: number;
+  lessons: number;
+  simulators: number;
+  questions: number;
+  totalXp: number;
+}
+
+export interface MarqueeCourse {
+  id: string;
+  title: string;
+  tagline: string;
+  icon: string; // lucide icon name
+  color: string; // tailwind gradient classes
+  lessons: number;
+}
+
+/* ── Shared bits ─────────────────────────────────────────────────────── */
+
+function SectionShell({
+  id,
+  className,
+  children,
+}: {
+  id?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Pill tone="capital" className="mb-4">
-      {children}
-    </Pill>
+    <section id={id} className={cn("relative scroll-mt-24 py-20 sm:py-24", className)}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">{children}</div>
+    </section>
   );
 }
 
-function Heading({ children }: { children: React.ReactNode }) {
+function SectionIntro({
+  pill,
+  icon: Icon,
+  title,
+  copy,
+  center,
+}: {
+  pill: string;
+  icon?: LucideIcon;
+  title: React.ReactNode;
+  copy?: string;
+  center?: boolean;
+}) {
   return (
-    <h2 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-      {children}
-    </h2>
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      whileInView="show"
+      viewport={viewportOnce}
+      className={cn("max-w-2xl", center && "mx-auto text-center")}
+    >
+      <motion.div variants={fadeUp}>
+        <Pill tone="capital" className="mb-4">
+          {Icon && <Icon className="h-3.5 w-3.5" />} {pill}
+        </Pill>
+      </motion.div>
+      <motion.h2
+        variants={fadeUp}
+        className="font-display text-3xl font-bold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.1]"
+      >
+        {title}
+      </motion.h2>
+      {copy && (
+        <motion.p variants={fadeUp} className="mt-4 text-white/55">
+          {copy}
+        </motion.p>
+      )}
+    </motion.div>
   );
 }
 
-// ── Product preview, feature bento ──────────────────────────────────────────
-export function ProductPreview() {
-  const features = [
-    { icon: BookOpen, title: "Learn", text: "20 student-native lessons that explain the market through your real money.", tone: "text-capital-300" },
-    { icon: TrendingUp, title: "Simulate", text: "Build a $10,000 mock portfolio with zero real-money risk.", tone: "text-violet-400" },
-    { icon: Users, title: "Connect", text: "Your campus becomes a financial learning community.", tone: "text-sky-300" },
-    { icon: Trophy, title: "Compete", text: "School-vs-school leaderboards and weekly challenges.", tone: "text-amber-300" },
-    { icon: Bot, title: "Ask", text: "Capital Coach answers money questions in plain English.", tone: "text-capital-300" },
-    { icon: Flame, title: "Habit", text: "Streaks, XP, and badges that make learning addictive.", tone: "text-orange-400" },
+/* ── 1 · Honest stat band ────────────────────────────────────────────── */
+
+export function StatBand({ stats }: { stats: LandingStats }) {
+  const tiles = [
+    { value: stats.courses, label: "Courses", sub: "money to venture capital", icon: BookOpen, tone: "text-capital-300" },
+    { value: stats.lessons, label: "Bite-size lessons", sub: "with XP on every one", icon: Zap, tone: "text-violet-400" },
+    { value: stats.simulators, label: "Simulators", sub: "zero real dollars", icon: TrendingUp, tone: "text-sky-300" },
+    { value: stats.questions, label: "Practice questions", sub: "5 question formats", icon: Check, tone: "text-amber-300" },
+    { value: stats.totalXp, label: "XP up for grabs", sub: "hearts, streaks & badges", icon: Flame, tone: "text-orange-400" },
   ];
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-      <Reveal className="mx-auto max-w-2xl text-center">
-        <SectionLabel>One platform</SectionLabel>
-        <Heading>Six products, one financial home for campus.</Heading>
-        <p className="mt-4 text-white/55">
-          Facebook for the network. Tesla for the design. Duolingo for the habit.
-          Robinhood for the simplicity. Khan Academy for the clarity.
+    <SectionShell id="stats" className="py-14 sm:py-16">
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+        className="gradient-border rounded-[2rem] p-2 shadow-glow-soft"
+      >
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {tiles.map((t, i) => (
+            <motion.div
+              key={t.label}
+              variants={pop}
+              className={cn(
+                "rounded-3xl bg-white/[0.02] p-5 text-center",
+                i === tiles.length - 1 && "col-span-2 sm:col-span-1",
+              )}
+            >
+              <t.icon className={cn("mx-auto h-5 w-5", t.tone)} />
+              <div className="mt-2 font-display text-3xl font-extrabold text-white sm:text-4xl">
+                <AnimatedNumber value={t.value} />
+              </div>
+              <p className="mt-1 text-sm font-semibold text-white/80">{t.label}</p>
+              <p className="text-xs text-white/40">{t.sub}</p>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+      <motion.p
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+        className="mt-4 text-center text-xs text-white/35"
+      >
+        Every number above is counted live from the real curriculum, no made-up
+        user stats, ever.
+      </motion.p>
+    </SectionShell>
+  );
+}
+
+/* ── 2 · Course marquee ──────────────────────────────────────────────── */
+
+function MarqueeCard({ course }: { course: MarqueeCourse }) {
+  const Icon = ICONS[course.icon] ?? BookOpen;
+  return (
+    <div className="glass sheen card-lift mx-2 flex w-[290px] shrink-0 items-center gap-3.5 rounded-3xl p-4">
+      <div
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-ink-950",
+          course.color,
+        )}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate font-display text-sm font-bold text-white">
+          {course.title}
         </p>
-      </Reveal>
-      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map((f, i) => (
-          <Reveal key={f.title} delay={i * 0.05}>
-            <Card hover className="h-full">
-              <f.icon className={`h-7 w-7 ${f.tone}`} />
-              <h3 className="mt-4 font-display text-lg font-semibold text-white">
-                {f.title}
-              </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-                {f.text}
-              </p>
-            </Card>
-          </Reveal>
-        ))}
+        <p className="truncate text-xs text-white/45">{course.tagline}</p>
+        <p className="mt-0.5 text-[11px] font-semibold text-capital-300">
+          {course.lessons} lessons
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function CourseMarquee({ items }: { items: MarqueeCourse[] }) {
+  const reduce = useReducedMotion();
+  const row = [...items, ...items]; // duplicate for the seamless -50% loop
+  return (
+    <section id="courses" className="scroll-mt-24 py-10">
+      <motion.div
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+        className="mx-auto mb-8 max-w-2xl px-4 text-center sm:px-6"
+      >
+        <Pill tone="violet" className="mb-3">
+          <GraduationCap className="h-3.5 w-3.5" /> The catalog
+        </Pill>
+        <h2 className="font-display text-3xl font-bold tracking-tight text-white sm:text-[2.6rem]">
+          {items.length} courses. One financial{" "}
+          <span className="text-gradient-capital">head start.</span>
+        </h2>
+      </motion.div>
+
+      <div
+        className="group relative overflow-hidden"
+        style={{
+          maskImage:
+            "linear-gradient(to right, transparent, black 8%, black 92%, transparent)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent, black 8%, black 92%, transparent)",
+        }}
+      >
+        <div
+          className={cn(
+            "flex w-max py-2 group-hover:[animation-play-state:paused]",
+            !reduce && "animate-marquee",
+          )}
+        >
+          {row.map((c, i) => (
+            <MarqueeCard key={`${c.id}-${i}`} course={c} />
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-// ── Problem section ──────────────────────────────────────────────────────────
-export function Problem() {
+/* ── 3 · The learn path ──────────────────────────────────────────────── */
+
+const MECHANICS = [
+  { icon: Heart, tone: "text-rose-400 bg-rose-500/10", title: "5 hearts", text: "Miss a question, lose a heart. Finish clean, feel unstoppable." },
+  { icon: Zap, tone: "text-capital-300 bg-capital-400/10", title: "XP everywhere", text: "Every answer, lesson, and challenge pays out experience." },
+  { icon: Flame, tone: "text-orange-400 bg-orange-400/10", title: "Daily streaks", text: "Five minutes a day keeps the flame, and the habit, alive." },
+];
+
+export function LearnSection({ stats }: { stats: LandingStats }) {
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-      <div className="grid items-center gap-12 lg:grid-cols-2">
-        <Reveal>
-          <SectionLabel>The problem</SectionLabel>
-          <Heading>
-            Finance sites explain investing like a textbook. Students don&apos;t
-            live in a textbook.
-          </Heading>
-          <p className="mt-5 text-white/55">
-            Investopedia and Wall Street blogs assume you already have a salary, a
-            401(k), and a mortgage. Students have financial aid, a part-time job,
-            rent splits, and a first paycheck they&apos;re terrified to mess up.
-          </p>
-          <p className="mt-4 text-white/55">
-            They don&apos;t need theory. They need examples built from their actual
-            money reality.
-          </p>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <div className="grid gap-4">
-            <Card className="border-rose-500/15 bg-rose-500/[0.03]">
-              <div className="flex items-center gap-2 text-rose-400">
-                <XCircle className="h-4 w-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">
-                  Traditional finance site
+    <SectionShell id="learn">
+      <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_1fr]">
+        <div>
+          <SectionIntro
+            pill="The learn path"
+            icon={BookOpen}
+            title={
+              <>
+                A game you play for five minutes.{" "}
+                <span className="text-gradient-capital">
+                  A skill you keep for life.
                 </span>
-              </div>
-              <p className="mt-3 font-display text-lg text-white/80">
-                &ldquo;Diversification reduces unsystematic risk across an
-                uncorrelated asset basket.&rdquo;
-              </p>
-            </Card>
-            <Card glow className="border-capital-400/20 bg-capital-400/[0.03]">
-              <div className="flex items-center gap-2 text-capital-300">
-                <CheckCircle2 className="h-4 w-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">
-                  Campus Capital
-                </span>
-              </div>
-              <p className="mt-3 font-display text-lg text-white">
-                &ldquo;Diversification is like not depending on one class, one
-                professor, or one internship to define your whole future.&rdquo;
-              </p>
-            </Card>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-// ── Why students need a different app ────────────────────────────────────────
-export function WhyDifferent() {
-  const principles = [
-    { n: "01", title: "Networks before capital", text: "Students may not have money yet, but they have campuses, clubs, and classmates. We grow through identity, not ad spend." },
-    { n: "02", title: "Every school is a community", text: "Each campus becomes its own financial learning network, complete with rank, rivalry, and pride." },
-    { n: "03", title: "Education that feels personal", text: "Every lesson is framed through aid, rent, internships, and first paychecks, the money students actually touch." },
-    { n: "04", title: "Understandable, never intimidating", text: "Robinhood-level simplicity meets Khan Academy clarity. No jargon walls, no gatekeeping." },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-      <Reveal className="max-w-2xl">
-        <SectionLabel>Why a different app</SectionLabel>
-        <Heading>Students don&apos;t need Wall Street. They need a head start.</Heading>
-      </Reveal>
-      <div className="mt-12 grid gap-4 md:grid-cols-2">
-        {principles.map((p, i) => (
-          <Reveal key={p.n} delay={i * 0.05}>
-            <Card hover className="h-full">
-              <div className="flex items-start gap-5">
-                <span className="font-display text-3xl font-bold text-gradient-capital">
-                  {p.n}
-                </span>
-                <div>
-                  <h3 className="font-display text-lg font-semibold text-white">
-                    {p.title}
-                  </h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-                    {p.text}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ── Campus network ───────────────────────────────────────────────────────────
-export function CampusNetwork() {
-  return (
-    <section id="network" className="relative scroll-mt-24 overflow-hidden py-24">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-radial-glow opacity-60" />
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <SectionLabel>
-            <Network className="h-3.5 w-3.5" /> Campus network
-          </SectionLabel>
-          <Heading>Your campus is already a financial network. We turn it on.</Heading>
-          <p className="mt-4 text-white/55">
-            Join your school. Follow classmates. Share what you&apos;re learning.
-            Watch your campus climb the national board together.
-          </p>
-        </Reveal>
-
-        <Reveal delay={0.1} className="mt-12">
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-white/40">
-                  Campus leaderboard
-                </p>
-                <Pill>Example</Pill>
-              </div>
-              <div className="mt-4 space-y-2.5">
-                {schools.slice(0, 5).map((s, i) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-3 rounded-2xl bg-white/[0.02] px-3 py-2.5"
-                  >
-                    <span className="w-6 text-center font-display font-bold text-white/40">
-                      {i + 1}
-                    </span>
-                    <span className="text-lg">{s.emoji}</span>
-                    <span className="flex-1 text-sm font-medium text-white">
-                      {s.shortName}
-                    </span>
-                    <span className="truncate text-xs text-white/35">{s.location}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs text-white/35">
-                Live standings populate as students at each school start learning.
-              </p>
-            </Card>
-            <div className="grid gap-4">
-              <Card className="flex flex-col justify-center">
-                <Crown className="h-6 w-6 text-amber-300" />
-                <div className="mt-3 font-display text-3xl font-bold text-white">
-                  {schools.length} campuses
-                </div>
-                <p className="text-sm text-white/50">communities you can join</p>
-              </Card>
-              <Card className="flex flex-col justify-center">
-                <BookOpen className="h-6 w-6 text-sky-300" />
-                <div className="mt-3 font-display text-3xl font-bold text-white">
-                  {lessons.length} lessons
-                </div>
-                <p className="text-sm text-white/50">student-native, always free</p>
-              </Card>
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-// ── Learning system ──────────────────────────────────────────────────────────
-export function LearningSystem() {
-  const modules = [
-    { letter: "A", title: "Start Here", text: "Investing, risk, and compounding, from zero." },
-    { letter: "B", title: "Money Foundation", text: "Budgeting, debt, credit, and income." },
-    { letter: "C", title: "Market Basics", text: "Stocks, ETFs, index funds, bonds." },
-    { letter: "D", title: "Build Wealth Early", text: "Roth IRAs, automation, dollar-cost averaging." },
-    { letter: "E", title: "Advanced Path", text: "Valuation, statements, allocation." },
-  ];
-  return (
-    <section id="learn" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-20 sm:px-6">
-      <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.1fr]">
-        <Reveal>
-          <SectionLabel>
-            <BookOpen className="h-3.5 w-3.5" /> Learning system
-          </SectionLabel>
-          <Heading>A Duolingo-style path from broke to investor.</Heading>
-          <p className="mt-4 text-white/55">
-            Five modules, twenty lessons. Each one has a student-life example, a
-            visual analogy, a quick quiz, and an XP reward. Build a streak. Earn
-            badges. Actually remember it.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            {["Student-life examples", "Instant-feedback quizzes", "XP & streaks", "Badges"].map((t) => (
-              <Pill key={t}>{t}</Pill>
-            ))}
-          </div>
-          <Button href="/signup" className="mt-8" variant="outline">
-            Explore the curriculum <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <div className="space-y-3">
-            {modules.map((m, i) => (
-              <Card
-                key={m.letter}
-                hover
-                className="flex items-center gap-4"
-                style={{ marginLeft: `${i * 10}px` }}
+              </>
+            }
+            copy={`${stats.lessons} lessons across ${stats.courses} courses, each one a quick run of teach cards and questions, multiple choice, true/false, scenarios, fill-ins, and matching. Explained through rent splits, financial aid, and first paychecks, not textbook jargon.`}
+          />
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="show"
+            viewport={viewportOnce}
+            className="mt-8 grid gap-3 sm:grid-cols-3"
+          >
+            {MECHANICS.map((m) => (
+              <motion.div
+                key={m.title}
+                variants={fadeUp}
+                className="glass card-lift rounded-3xl p-4"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-capital-gradient font-display text-lg font-bold text-ink-950">
-                  {m.letter}
+                <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl", m.tone)}>
+                  <m.icon className="h-[18px] w-[18px]" />
                 </div>
-                <div>
-                  <h3 className="font-display font-semibold text-white">
-                    {m.title}
-                  </h3>
-                  <p className="text-sm text-white/50">{m.text}</p>
-                </div>
-              </Card>
+                <p className="mt-3 font-display text-sm font-bold text-white">{m.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/50">{m.text}</p>
+              </motion.div>
             ))}
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
+          </motion.div>
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="show"
+            viewport={viewportOnce}
+            className="mt-8"
+          >
+            <Button href="/signup" variant="outline">
+              See the full curriculum <ArrowRight className="h-4 w-4" />
+            </Button>
+          </motion.div>
+        </div>
 
-// ── Simulator ────────────────────────────────────────────────────────────────
-export function SimulatorSection() {
-  return (
-    <section id="simulator" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-20 sm:px-6">
-      <div className="grid items-center gap-12 lg:grid-cols-2">
-        <Reveal className="order-2 lg:order-1">
-          <Card glow className="p-6">
-            <div className="mb-3 flex items-center justify-between">
-              <Pill>Example portfolio</Pill>
-              <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[10px] text-white/40">
-                Mock · $0 real
+        {/* Visual: a lesson question card, mid-play */}
+        <motion.div
+          variants={pop}
+          initial="hidden"
+          whileInView="show"
+          viewport={viewportOnce}
+          className="relative mx-auto w-full max-w-md"
+        >
+          <div className="glass-hi rounded-[2rem] p-6 shadow-glow-soft sm:p-7">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-1 items-center gap-2 pr-4">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/8">
+                  <div className="h-full w-3/5 rounded-full bg-capital-gradient" />
+                </div>
+              </div>
+              <span className="flex items-center gap-1 text-xs font-bold text-rose-400">
+                <Heart className="h-3.5 w-3.5 fill-rose-400" /> 5
               </span>
             </div>
-            <div>
-              <p className="text-xs text-white/45">Starting balance</p>
-              <p className="font-display text-3xl font-bold text-white">$10,000</p>
-            </div>
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <p className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+              Scenario
+            </p>
+            <p className="mt-2 font-display text-lg font-bold leading-snug text-white">
+              Your internship pays $2,400/month. Rent is $900. What does 50/30/20
+              say your &ldquo;wants&rdquo; budget is?
+            </p>
+            <div className="mt-4 space-y-2.5">
               {[
-                { label: "Risk score", value: "Balanced", tone: "text-amber-300" },
-                { label: "Diversification", value: "88 / 100", tone: "text-capital-300" },
-                { label: "Biggest position", value: "VTI · 35%", tone: "text-white" },
-                { label: "Asset types", value: "4 types", tone: "text-sky-300" },
-              ].map((s) => (
-                <div key={s.label} className="rounded-2xl bg-white/[0.02] p-3">
-                  <p className="text-xs text-white/40">{s.label}</p>
-                  <p className={`mt-1 font-display text-lg font-semibold ${s.tone}`}>
-                    {s.value}
+                { label: "$480", state: "idle" },
+                { label: "$720", state: "correct" },
+                { label: "$1,200", state: "idle" },
+              ].map((o) => (
+                <div
+                  key={o.label}
+                  className={cn(
+                    "flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold",
+                    o.state === "correct"
+                      ? "border-capital-400/50 bg-capital-400/10 text-capital-300 shadow-glow"
+                      : "border-white/10 bg-white/[0.02] text-white/70",
+                  )}
+                >
+                  {o.label}
+                  {o.state === "correct" && <Check className="h-4 w-4" />}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center justify-between rounded-2xl bg-capital-400/[0.06] px-4 py-3">
+              <span className="text-sm font-semibold text-capital-300">
+                Nice, that&apos;s 30% of $2,400.
+              </span>
+              <span className="flex items-center gap-1 text-xs font-bold text-capital-300">
+                <Zap className="h-3.5 w-3.5" /> +10 XP
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ── 4 · Simulators ──────────────────────────────────────────────────── */
+
+export function SimulatorsSection() {
+  return (
+    <SectionShell id="simulators" className="overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-mesh opacity-70" />
+      <SectionIntro
+        center
+        pill={`${sims.length} simulators`}
+        icon={TrendingUp}
+        title={
+          <>
+            Make every money mistake{" "}
+            <span className="text-gradient-capital">where it&apos;s free.</span>
+          </>
+        }
+        copy="Trade real tickers with fake money, negotiate a salary, price a product, pitch an investor. Real mechanics, real numbers, zero real dollars."
+      />
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+        className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {sims.map((s) => {
+          const Icon = ICONS[s.icon] ?? Sparkles;
+          return (
+            <motion.div
+              key={s.id}
+              variants={fadeUp}
+              className="glass sheen card-lift flex h-full flex-col rounded-3xl p-5"
+            >
+              <div className="flex items-center justify-between">
+                <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", s.iconClass)}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-white/40">
+                  ~{s.minutes} min
+                </span>
+              </div>
+              <h3 className="mt-4 font-display text-base font-bold text-white">
+                {s.title}
+              </h3>
+              <p className="mt-1.5 flex-1 text-sm leading-relaxed text-white/50">
+                {s.pitch}
+              </p>
+              <p className="mt-3 text-xs font-semibold text-capital-300">{s.skill}</p>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+      <motion.div
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+        className="mt-10 flex flex-col items-center gap-4"
+      >
+        <Button href="/signup" size="lg" className="shadow-glow-lg">
+          Try the simulators free <ArrowRight className="h-4 w-4" />
+        </Button>
+        <p className="max-w-md text-center text-xs text-white/40">
+          <strong className="text-white/60">No real trading.</strong> No brokerage
+          integration. Simulated portfolios for education only.
+        </p>
+      </motion.div>
+    </SectionShell>
+  );
+}
+
+/* ── 5 · Compete (leaderboards & streaks) ────────────────────────────── */
+
+const BOARDS = [
+  { icon: Trophy, label: "Student XP", text: "Who's putting in the most reps this week." },
+  { icon: GraduationCap, label: "Campus vs. campus", text: "Your school's collective XP, ranked nationally." },
+  { icon: Users, label: "Club vs. club", text: "Investing clubs and finance societies climb together." },
+  { icon: Flame, label: "Streak boards", text: "Consistency is the real flex." },
+];
+
+export function CompeteSection() {
+  return (
+    <SectionShell id="compete">
+      <div className="grid items-center gap-12 lg:grid-cols-2">
+        {/* Visual: podium mock */}
+        <motion.div
+          variants={pop}
+          initial="hidden"
+          whileInView="show"
+          viewport={viewportOnce}
+          className="order-2 mx-auto w-full max-w-md lg:order-1"
+        >
+          <div className="glass-hi rounded-[2rem] p-6 shadow-glow-soft sm:p-7">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40">
+                Campus leaderboard
+              </p>
+              <Pill>How it works</Pill>
+            </div>
+            <div className="mt-6 flex items-end justify-center gap-3">
+              {[
+                { place: 2, h: "h-20", label: "Rival campus", tone: "bg-white/10" },
+                { place: 1, h: "h-28", label: "Your campus", tone: "bg-capital-gradient", crown: true },
+                { place: 3, h: "h-14", label: "That other school", tone: "bg-white/10" },
+              ].map((p) => (
+                <div key={p.place} className="flex w-24 flex-col items-center gap-2">
+                  {p.crown && <Crown className="h-5 w-5 text-amber-300" />}
+                  <div
+                    className={cn(
+                      "flex w-full items-start justify-center rounded-t-2xl pt-2 font-display text-lg font-extrabold",
+                      p.h,
+                      p.tone,
+                      p.crown ? "text-ink-950 shadow-glow" : "text-white/50",
+                    )}
+                  >
+                    {p.place}
+                  </div>
+                  <p className="text-center text-[11px] leading-tight text-white/45">
+                    {p.label}
                   </p>
                 </div>
               ))}
             </div>
-            <div className="mt-4 rounded-2xl border border-capital-400/15 bg-capital-400/[0.04] px-4 py-3 text-sm text-white/70">
-              💡 Solid diversification! Next, learn about rebalancing and
-              allocation.
+            <div className="mt-6 space-y-2">
+              {[
+                { rank: "You", xp: "Every lesson counts here", you: true },
+                { rank: "Your club", xp: "Weekly challenges add up" },
+                { rank: "Your school", xp: "Rise as your campus learns" },
+              ].map((r) => (
+                <div
+                  key={r.rank}
+                  className={cn(
+                    "flex items-center justify-between rounded-2xl px-4 py-2.5 text-sm",
+                    r.you
+                      ? "border border-capital-400/30 bg-capital-400/[0.07] font-semibold text-capital-300"
+                      : "bg-white/[0.02] text-white/60",
+                  )}
+                >
+                  <span>{r.rank}</span>
+                  <span className="text-xs text-white/40">{r.xp}</span>
+                </div>
+              ))}
             </div>
-          </Card>
-        </Reveal>
-        <Reveal delay={0.1} className="order-1 lg:order-2">
-          <SectionLabel>
-            <TrendingUp className="h-3.5 w-3.5" /> Portfolio simulator
-          </SectionLabel>
-          <Heading>Learn by building, with $10,000 that isn&apos;t real.</Heading>
-          <p className="mt-4 text-white/55">
-            Add stocks, ETFs, index funds, and bonds. Get a live risk score, a
-            diversification score, and a student-friendly recommendation tied to a
-            lesson. Make every mistake here, where it&apos;s free.
-          </p>
-          <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-xs text-white/45">
-            <strong className="text-white/60">No real trading.</strong> No
-            brokerage integration. A simulated portfolio for education only.
+            <p className="mt-4 text-center text-[11px] text-white/30">
+              Illustration, real boards fill in as students learn.
+            </p>
           </div>
-        </Reveal>
+        </motion.div>
+
+        <div className="order-1 lg:order-2">
+          <SectionIntro
+            pill="Compete"
+            icon={Trophy}
+            title={
+              <>
+                Competition that builds wealth,{" "}
+                <span className="text-gradient-capital">not anxiety.</span>
+              </>
+            }
+            copy="XP turns learning into a sport. Rep your campus, rally your club, and defend your streak, a healthy race that makes showing up daily irresistible."
+          />
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="show"
+            viewport={viewportOnce}
+            className="mt-8 grid gap-3 sm:grid-cols-2"
+          >
+            {BOARDS.map((b) => (
+              <motion.div
+                key={b.label}
+                variants={fadeUp}
+                className="glass card-lift rounded-3xl p-4"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-capital-300">
+                  <b.icon className="h-[18px] w-[18px]" />
+                </div>
+                <p className="mt-3 font-display text-sm font-bold text-white">{b.label}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/50">{b.text}</p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
       </div>
-    </section>
+    </SectionShell>
   );
 }
 
-// ── Leaderboard ──────────────────────────────────────────────────────────────
-export function LeaderboardSection() {
-  return (
-    <section id="leaderboard" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-20 sm:px-6">
-      <Reveal className="mx-auto max-w-2xl text-center">
-        <SectionLabel>
-          <Trophy className="h-3.5 w-3.5" /> Leaderboards
-        </SectionLabel>
-        <Heading>Competition that builds wealth, not anxiety.</Heading>
-        <p className="mt-4 text-white/55">
-          Student XP. Campus XP. School vs. school. Club vs. club. Streaks. A
-          healthy race that makes showing up every day irresistible.
-        </p>
-      </Reveal>
-      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[
-          { icon: Trophy, label: "Student XP", text: "Who's putting in the most reps." },
-          { icon: GraduationCap, label: "Campus XP", text: "Your school's collective total." },
-          { icon: Network, label: "School vs school", text: "Rep your campus nationally." },
-          { icon: Users, label: "Club vs club", text: "Communities climb together." },
-          { icon: Flame, label: "Streaks", text: "Consistency is the real flex." },
-          { icon: TrendingUp, label: "Simulator", text: "Best paper-trading runs." },
-        ].map((b, i) => (
-          <Reveal key={b.label} delay={i * 0.05}>
-            <Card hover className="h-full">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-capital-300">
-                <b.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mt-4 font-display font-semibold text-white">{b.label}</h3>
-              <p className="mt-1 text-sm text-white/55">{b.text}</p>
-            </Card>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  );
-}
+/* ── 6 · Capital Coach ───────────────────────────────────────────────── */
 
-// ── AI tutor ─────────────────────────────────────────────────────────────────
 export function CoachSection() {
   return (
-    <section id="coach" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-20 sm:px-6">
+    <SectionShell id="coach">
       <div className="grid items-center gap-12 lg:grid-cols-2">
-        <Reveal>
-          <SectionLabel>
-            <Bot className="h-3.5 w-3.5" /> Capital Coach
-          </SectionLabel>
-          <Heading>An AI tutor that speaks student, not Wall Street.</Heading>
-          <p className="mt-4 text-white/55">
-            Ask anything about money in plain language. Capital Coach explains it
-            simply, recommends the right lesson next, and never pretends a guess
-            is a guarantee.
-          </p>
-          <p className="mt-4 text-sm font-medium text-capital-300">
-            Try it right here, ask a real question. 👉
-          </p>
-        </Reveal>
-        <Reveal delay={0.1}>
+        <div>
+          <SectionIntro
+            pill="Capital Coach"
+            icon={Bot}
+            title={
+              <>
+                An AI money tutor that speaks{" "}
+                <span className="text-gradient-capital">student, not Wall Street.</span>
+              </>
+            }
+            copy="Ask anything about money in plain language. Capital Coach explains it simply, points you to the right lesson next, and never pretends a guess is a guarantee."
+          />
+          <motion.p
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="show"
+            viewport={viewportOnce}
+            className="mt-6 text-sm font-semibold text-capital-300"
+          >
+            This demo is wired to the real coach, go ahead, ask it something.
+          </motion.p>
+        </div>
+        <motion.div
+          variants={pop}
+          initial="hidden"
+          whileInView="show"
+          viewport={viewportOnce}
+        >
           <CoachDemo />
-        </Reveal>
+        </motion.div>
       </div>
-    </section>
+    </SectionShell>
   );
 }
 
-// ── Revenue / partnership vision ─────────────────────────────────────────────
-export function VisionSection() {
-  const items = [
-    { icon: GraduationCap, title: "University partnerships", text: "White-labeled financial literacy for campuses and first-year programs." },
-    { icon: Megaphone, title: "Sponsored learning", text: "Brands fund lessons and challenges. Students get free education." },
-    { icon: Building2, title: "Recruiting pipeline", text: "Finance employers meet financially-literate talent, early." },
-    { icon: Wallet, title: "Premium subscriptions", text: "Deeper simulators, analytics, and career prep for power users." },
-    { icon: Crown, title: "Campus ambassadors", text: "Student leaders grow their school's community and earn status." },
-    { icon: Network, title: "Anonymous insights", text: "Aggregate, privacy-safe student finance trends for research partners." },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-      <Reveal className="mx-auto max-w-2xl text-center">
-        <SectionLabel>The business</SectionLabel>
-        <Heading>A network this loyal becomes a category-defining company.</Heading>
-        <p className="mt-4 text-white/55">
-          Education-first and student-loved, with six revenue paths that never
-          compromise the mission.
-        </p>
-      </Reveal>
-      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((it, i) => (
-          <Reveal key={it.title} delay={i * 0.04}>
-            <Card hover className="h-full">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-capital-300">
-                <it.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mt-4 font-display font-semibold text-white">
-                {it.title}
-              </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-                {it.text}
-              </p>
-            </Card>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  );
-}
+/* ── 7 · Final CTA ───────────────────────────────────────────────────── */
 
-// ── Final CTA ────────────────────────────────────────────────────────────────
-export function FinalCTA() {
+export function FinalCTA({ stats }: { stats: LandingStats }) {
   return (
-    <section className="mx-auto max-w-7xl px-4 py-24 sm:px-6">
-      <Reveal>
-        <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-ink-800 to-ink-900 px-6 py-16 text-center sm:px-12">
-          <div className="pointer-events-none absolute inset-0 -z-10 bg-radial-glow" />
-          <Quote className="mx-auto h-8 w-8 text-capital-300/60" />
-          <h2 className="mx-auto mt-5 max-w-3xl font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">
-            This isn&apos;t just an app. It&apos;s the financial network of the
-            next generation.
-          </h2>
-          <p className="mx-auto mt-5 max-w-xl text-white/55">
-            Learn the market through the life you actually live, internships,
-            rent, aid, side hustles, and your first real paycheck.
-          </p>
-          <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button href="/signup" size="lg">
-              Start Learning <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button href="/signup?step=3" size="lg" variant="secondary">
-              Join Your Campus
-            </Button>
+    <SectionShell className="pb-28">
+      <motion.div
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={viewportOnce}
+      >
+        <div className="gradient-border relative overflow-hidden rounded-[2.5rem] px-6 py-16 text-center shadow-glow-soft sm:px-12 sm:py-20">
+          <div className="pointer-events-none absolute -inset-[10%] bg-aurora animate-aurora" />
+          <div className="pointer-events-none absolute inset-0 bg-noise" />
+          <div className="relative">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-capital-400/20 bg-capital-400/10 px-3.5 py-1.5 text-xs font-semibold text-capital-300">
+              <Sparkles className="h-3.5 w-3.5" /> Free forever · No credit card
+            </span>
+            <h2 className="mx-auto mt-6 max-w-3xl font-display text-4xl font-extrabold tracking-tight text-white sm:text-6xl">
+              Your first lesson takes{" "}
+              <span className="text-gradient-capital text-glow">
+                five minutes.
+              </span>
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-white/55">
+              {stats.courses} courses, {stats.lessons} lessons, and{" "}
+              {stats.simulators} simulators are waiting. The best time to learn
+              money was before you had any, that&apos;s now.
+            </p>
+            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button href="/signup" size="lg" className="shadow-glow-lg">
+                Start free <ArrowRight className="h-4 w-4" />
+              </Button>
+              <Button href="/login" size="lg" variant="secondary">
+                Log in
+              </Button>
+            </div>
           </div>
         </div>
-      </Reveal>
-    </section>
+      </motion.div>
+    </SectionShell>
   );
 }

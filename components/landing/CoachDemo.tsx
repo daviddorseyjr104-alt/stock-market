@@ -2,8 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Bot, Send, ArrowRight } from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { Bot, Send, ArrowRight, Sparkles } from "lucide-react";
 import { track } from "@/lib/analytics";
 
 const SUGGESTIONS = [
@@ -75,7 +74,19 @@ export function CoachDemo() {
   }
 
   return (
-    <Card className="p-5">
+    <div className="gradient-border rounded-3xl p-5 shadow-glow-soft">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BotAvatar />
+          <div>
+            <p className="font-display text-sm font-bold text-white">Capital Coach</p>
+            <p className="text-[11px] text-white/40">The real one, not a mock</p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-capital-400/10 px-2.5 py-1 text-[10px] font-semibold text-capital-300">
+          <Sparkles className="h-3 w-3" /> Live demo
+        </span>
+      </div>
       <div className="min-h-[176px] space-y-3">
         {!exchange ? (
           <div className="flex max-w-[90%] gap-2.5">
@@ -147,6 +158,6 @@ export function CoachDemo() {
           <Send className="h-4 w-4" />
         </button>
       </form>
-    </Card>
+    </div>
   );
 }
