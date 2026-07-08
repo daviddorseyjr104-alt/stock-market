@@ -86,7 +86,14 @@ export function Footer() {
             © {new Date().getFullYear()} Campus Capital. Built for the next
             generation of investors.
           </p>
-          <p>Master money before you have any.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="transition-colors hover:text-white/70">
+              Privacy
+            </Link>
+            <Link href="/terms" className="transition-colors hover:text-white/70">
+              Terms
+            </Link>
+          </div>
         </div>
       </div>
     </footer>
