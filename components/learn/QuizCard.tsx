@@ -11,6 +11,15 @@ import { MatchQuestion } from "./MatchQuestion";
 /** Contract-specified fill-in normalization: case- and space-insensitive. */
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+/** The correct answer stated in plain words, shown when the learner is wrong. */
+function correctAnswerLabel(q: Question): string | null {
+  if (q.type === "true-false") return q.correctBool ? "True" : "False";
+  if (q.type === "mcq" || q.type === "scenario")
+    return q.options?.[q.correctIndex ?? -1] ?? null;
+  if (q.type === "fill-in") return q.accept?.[0] ?? null;
+  return null; // "match" reveals every correct pair visually
+}
+
 /**
  * Renders ONE question of any type (mcq / scenario / true-false / fill-in),
  * manages its own answered state, shows the hint affordance and the
@@ -224,9 +233,10 @@ export function QuizCard({
                 </>
               )}
             </p>
-            {question.type === "fill-in" && !wasCorrect && (question.accept?.length ?? 0) > 0 && (
+            {!wasCorrect && correctAnswerLabel(question) && (
               <p className="mt-1.5 text-sm font-semibold text-white/80">
-                Answer: <span className="text-capital-300">{question.accept?.[0]}</span>
+                Correct answer:{" "}
+                <span className="text-capital-300">{correctAnswerLabel(question)}</span>
               </p>
             )}
             <p className="mt-1.5 text-sm leading-relaxed text-white/75">

@@ -29,7 +29,7 @@ export const STORAGE_KEY = "cc_state_v1";
 
 /** Current snapshot schema version. Mismatched persisted snapshots are
  *  discarded on load and the app falls back to a fresh demo snapshot. */
-export const SNAPSHOT_VERSION = 2 as const;
+export const SNAPSHOT_VERSION = 3 as const;
 
 export interface EquityPoint {
   t: number; // epoch ms

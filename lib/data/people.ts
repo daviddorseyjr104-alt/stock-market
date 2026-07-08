@@ -1,31 +1,34 @@
 import type { Profile } from "@/lib/types";
 
-// The signed-in demo user.
+// The default signed-in user before anyone creates their own account: a fresh,
+// neutral Guest at zero. No preset name and no unearned progress, so every new
+// visitor starts their own journey instead of inheriting a stranger's profile.
+// Real sign-ups replace this entirely with the name the student enters.
 export const currentUser: Profile = {
   id: "u-davon",
-  fullName: "Davon Carter",
-  username: "davon",
-  email: "davon@ucla.edu",
+  fullName: "Guest",
+  username: "guest",
+  email: "",
   avatarColor: "from-capital-400 to-violet-500",
   schoolId: "ucla",
-  major: "Economics",
-  gradYear: 2027,
-  studentType: "sophomore",
-  investingLevel: "some knowledge",
-  goal: "Build wealth long-term",
-  interests: ["ETFs", "Roth IRA", "Budgeting", "Finance careers"],
-  bio: "Sophomore econ major learning to build wealth before I have any. Café shifts by day, index funds by 2050. 🐻",
-  level: 7,
-  xp: 4820,
-  streak: 12,
-  campusRank: 4,
-  nationalRank: 137,
-  followers: 213,
-  following: 184,
-  badges: ["first-lesson", "budget-builder", "roth-rookie", "streak-7", "etf-explorer", "campus-top-10"],
-  completedLessons: ["what-is-investing", "why-students-early", "saving-vs-investing", "risk-explained", "compound-interest", "budgeting-college", "emergency-funds", "etfs", "roth-ira"],
-  clubs: ["ucla-investors", "black-wealth", "first-gen"],
-  joinedAt: "2025-09-02T12:00:00Z",
+  major: "Undeclared",
+  gradYear: 2028,
+  studentType: "freshman",
+  investingLevel: "beginner",
+  goal: "Learn basics",
+  interests: [],
+  bio: "New to Campus Capital, here to learn how money works before I have any. 🌱",
+  level: 1,
+  xp: 0,
+  streak: 0,
+  campusRank: 0,
+  nationalRank: 0,
+  followers: 0,
+  following: 0,
+  badges: [],
+  completedLessons: [],
+  clubs: [],
+  joinedAt: "2026-01-01T12:00:00Z",
 };
 
 export const people: Profile[] = [

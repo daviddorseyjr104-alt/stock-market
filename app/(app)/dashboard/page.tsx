@@ -91,6 +91,7 @@ export default function DashboardPage() {
   useEffect(() => setMounted(true), []);
   const greeting = mounted ? timeGreeting() : "Welcome back";
 
+  const isGuest = profile.username === "guest";
   const firstName = profile.fullName.split(" ")[0];
   const level = levelForXp(profile.xp);
   const { inLevel, pct } = xpProgressInLevel(profile.xp);
@@ -178,7 +179,12 @@ export default function DashboardPage() {
               {school?.shortName ?? "Campus"} · {profile.major}
             </p>
             <h1 className="mt-0.5 font-display text-3xl font-bold tracking-tight text-white">
-              {greeting}, <span className="text-gradient-capital">{firstName}</span>
+              {greeting}
+              {!isGuest && (
+                <>
+                  , <span className="text-gradient-capital">{firstName}</span>
+                </>
+              )}
             </h1>
           </div>
           <div className="flex items-center gap-3">

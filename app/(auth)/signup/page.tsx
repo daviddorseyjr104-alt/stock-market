@@ -93,6 +93,7 @@ function SignupInner() {
   const initialStep = params.get("step") === "3" ? 3 : 1;
   const [step, setStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // form state
   const [fullName, setFullName] = useState("");
@@ -121,13 +122,21 @@ function SignupInner() {
 
   async function finish() {
     setLoading(true);
+    setError(null);
     const supabase = createClient();
     if (supabase) {
-      await supabase.auth.signUp({
+      const { error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { full_name: fullName, school_id: schoolId } },
       });
+      // Surface real problems (weak password, email already registered, schema
+      // not applied) instead of silently dropping the user into a local session.
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
     } else {
       await new Promise((r) => setTimeout(r, 800));
     }
@@ -150,6 +159,15 @@ function SignupInner() {
 
   return (
     <div>
+      {error && (
+        <div
+          role="alert"
+          className="mb-5 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200"
+        >
+          {error}
+        </div>
+      )}
+
       {/* Stepper */}
       <div className="mb-8 flex items-center gap-2">
         {[1, 2, 3].map((s) => (

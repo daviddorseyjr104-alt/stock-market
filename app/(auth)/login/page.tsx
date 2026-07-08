@@ -13,7 +13,7 @@ import { track } from "@/lib/analytics";
 export default function LoginPage() {
   const router = useRouter();
   const { loginAsDemo } = useAppState();
-  const [email, setEmail] = useState("davon@ucla.edu");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
