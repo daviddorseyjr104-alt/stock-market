@@ -55,7 +55,10 @@ export interface Profile {
   fullName: string;
   username: string;
   email: string;
+  /** Gradient used by the initials fallback whenever `avatarUrl` is unset. */
   avatarColor: string;
+  /** Uploaded profile picture (Supabase Storage public URL). */
+  avatarUrl?: string;
   schoolId: string;
   major: string;
   gradYear: number;
@@ -348,21 +351,6 @@ export interface WeeklyGoal {
   title: string;
   metric: "xp" | "lessons";
   goal: number;
-  icon: string;
-}
-
-export interface CampusEvent {
-  id: string;
-  title: string;
-  kind: "event" | "competition" | "office-hours" | "opportunity";
-  org: string;
-  date: string;
-  time: string;
-  location: string;
-  description: string;
-  tags: string[];
-  capacity?: number;
-  going: number;
   icon: string;
 }
 

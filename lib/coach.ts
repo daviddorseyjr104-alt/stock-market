@@ -8,6 +8,11 @@ export interface CoachReply {
   answer: string[];
   recommendedLessonId?: string;
   recommendedLabel?: string;
+  /** "offline" means the built-in keyword engine answered, not a live model.
+   *  Surfaced so the UI can say so instead of passing it off as the real thing. */
+  source?: "live" | "offline";
+  /** Live questions left today, when the backend is metering them. */
+  remaining?: number;
 }
 
 export const suggestedPrompts: string[] = [

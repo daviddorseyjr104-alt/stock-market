@@ -53,6 +53,18 @@ export const investingCourse: Course = {
                 "When a company like Airbnb went public, it sold shares to investors to raise billions of dollars it could use to grow, instead of borrowing from a bank.",
             },
             {
+              // Defines dividend, index fund and risk, which the match question
+              // below tests but the course previously introduced only much later.
+              kind: "teach",
+              id: "investing-u1-l1-t3",
+              title: "Three more words you'll see everywhere",
+              body: "A dividend is a cash payout some companies send to their shareholders out of profits, just for owning the stock. An index fund is a single fund that holds hundreds of companies at once, so one purchase spreads your money across the whole market instead of one bet. Risk is the chance an investment loses value, and it's the reason investments can pay more than a savings account.",
+              example:
+                "Coca-Cola pays a dividend every quarter. An S&P 500 index fund holds Coca-Cola plus 499 other companies, so one bad quarter at one company barely moves you.",
+              analogy:
+                "A dividend is a rent check from something you own. An index fund is buying the whole neighborhood instead of one house. Risk is the reason the neighborhood can go up or down at all.",
+            },
+            {
               kind: "question",
               id: "investing-u1-l1-qm",
               type: "match",

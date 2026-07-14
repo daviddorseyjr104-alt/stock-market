@@ -34,13 +34,17 @@ export const secondaryNav: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-// Mobile bottom tab bar, hard cap of 5 tabs. The core loop (Home, Learn,
-// Simulator, Campus, Profile) keeps its slots; Coach, Clubs and Leaderboards
-// stay reachable from the sidebar sheet / dashboard cards on mobile.
+// Mobile bottom tab bar, hard cap of 5 tabs.
+//
+// Coach used to be cut here in favour of Profile, on the assumption it stayed
+// reachable from a sidebar sheet — but the sidebar is `hidden lg:flex` and there
+// is no sheet, so on a phone Coach was reachable only via the command palette.
+// Asking a money question is a core reason to open the app, so it gets a tab;
+// Profile moves to the avatar in the top bar, which is where people look anyway.
 export const mobileNav: NavItem[] = [
   { label: "Home", href: "/dashboard", icon: Home },
   { label: "Learn", href: "/learn", icon: BookOpen },
   { label: "Simulator", href: "/simulator", icon: TrendingUp },
+  { label: "Coach", href: "/coach", icon: Bot },
   { label: "Campus", href: "/campus", icon: Users },
-  { label: "Profile", href: "/profile", icon: User },
 ];

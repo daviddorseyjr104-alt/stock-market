@@ -49,6 +49,17 @@ export const creditDebtCourse: Course = {
               analogy: "It's like a reference list for a job: you can't hand one over on day one, but you can start collecting good references immediately.",
             },
             {
+              // Introduces every term the match question below tests. Without
+              // this card the quiz asked learners to define APR, minimum payment
+              // and utilization before the course had ever mentioned them.
+              kind: "teach",
+              id: "credit-debt-u1-l1-t3",
+              title: "The four words on every credit card statement",
+              body: "Before you open anything, learn the vocabulary. Your credit score is the number lenders use to judge how reliably you pay people back. APR is the yearly interest rate you're charged on any balance you don't pay off. The minimum payment is the smallest amount you can pay to keep the account in good standing. Utilization is how much of your credit limit you're currently using, your balance divided by your limit.",
+              example: "A $500 limit with a $100 balance is 20% utilization. Pay $35 (the minimum) and you stay current, but the other $65 starts collecting interest at your APR.",
+              analogy: "Score is your reputation, APR is the rent you pay on borrowed money, the minimum is the smallest rent check they'll accept, and utilization is how full your tank already is.",
+            },
+            {
               kind: "question",
               id: "credit-debt-u1-l1-qm",
               type: "match",

@@ -16,13 +16,16 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
-import { Avatar } from "@/components/ui/Avatar";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { Reveal } from "@/components/ui/Reveal";
 import { CardSkeleton, Skeleton } from "@/components/ui/Skeleton";
+import { AvatarPicker } from "@/components/profile/AvatarPicker";
 import { springSoft } from "@/lib/motion";
 import { useAppState } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import type { NotifyPrefs } from "@/lib/store/repository";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { checkUsername, normalizeUsername, type UsernameStatus } from "@/lib/username";
+import { cn, initials } from "@/lib/utils";
 import type { Goal, InvestingLevel, Interest, Profile } from "@/lib/types";
 
 const investingLevels: InvestingLevel[] = [
@@ -65,34 +68,6 @@ const avatarGradients = [
   "from-fuchsia-500 to-capital-400",
 ];
 
-/* Notification preferences persist on this device (localStorage). */
-const NOTIFY_KEY = "cc_notify_prefs_v1";
-
-interface NotifyPrefs {
-  streak: boolean;
-  lessons: boolean;
-  social: boolean;
-  rank: boolean;
-}
-
-const DEFAULT_NOTIFY: NotifyPrefs = {
-  streak: true,
-  lessons: true,
-  social: true,
-  rank: false,
-};
-
-function loadNotifyPrefs(): NotifyPrefs {
-  if (typeof window === "undefined") return DEFAULT_NOTIFY;
-  try {
-    const raw = window.localStorage.getItem(NOTIFY_KEY);
-    if (raw) return { ...DEFAULT_NOTIFY, ...(JSON.parse(raw) as Partial<NotifyPrefs>) };
-  } catch {
-    /* corrupted prefs → defaults */
-  }
-  return DEFAULT_NOTIFY;
-}
-
 const fieldClass =
   "w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-white/35 transition-colors focus:border-capital-400/40 focus:bg-white/[0.05] focus:outline-none focus-visible:ring-focus";
 
@@ -122,32 +97,36 @@ export default function SettingsPage() {
 
 function SettingsForm({ profile }: { profile: Profile }) {
   const router = useRouter();
-  const { updateProfile, logout } = useAppState();
+  const { updateProfile, logout, emailVerified, notifyPrefs, setNotifyPref } =
+    useAppState();
 
   // Profile section
   const [fullName, setFullName] = useState(profile.fullName);
+  const [username, setUsername] = useState(profile.username);
+  const [nameStatus, setNameStatus] = useState<UsernameStatus>({ state: "idle" });
   const [major, setMajor] = useState(profile.major);
   const [gradYear, setGradYear] = useState(String(profile.gradYear));
   const [bio, setBio] = useState(profile.bio);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Learning preferences
   const [level, setLevel] = useState<InvestingLevel>(profile.investingLevel);
   const [goal, setGoal] = useState<Goal>(profile.goal);
   const [interests, setInterests] = useState<Interest[]>(profile.interests);
 
-  // Notification toggles, real device preferences, persisted locally.
-  const [notify, setNotifyState] = useState<NotifyPrefs>(loadNotifyPrefs);
-  const setNotify = (key: keyof NotifyPrefs, value: boolean) => {
-    setNotifyState((prev) => {
-      const next = { ...prev, [key]: value };
-      try {
-        window.localStorage.setItem(NOTIFY_KEY, JSON.stringify(next));
-      } catch {
-        /* storage may be unavailable; the toggle still works this session */
-      }
-      return next;
-    });
+  // These used to write to a localStorage key that nothing else in the app ever
+  // read, so every switch was decorative. They now live in the store and gate
+  // which notifications get generated at all.
+  const [notifyError, setNotifyError] = useState<string | null>(null);
+  const setNotify = async (key: keyof NotifyPrefs, value: boolean) => {
+    setNotifyError(null);
+    const ok = await setNotifyPref(key, value);
+    if (!ok) {
+      setNotifyError(
+        "Your browser blocked notifications for this site. Allow them in your browser settings to turn streak reminders on.",
+      );
+    }
   };
 
   const toggleInterest = (interest: Interest) => {
@@ -158,13 +137,27 @@ function SettingsForm({ profile }: { profile: Profile }) {
     updateProfile({ interests: next });
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
+    setSaving(true);
+    // `username` is UNIQUE in the database. Check before writing, or the upsert
+    // fails silently and the user is left believing they saved.
+    if (username !== profile.username) {
+      const status = await checkUsername(username, profile.id);
+      if (status.state !== "available") {
+        setNameStatus(status);
+        setSaving(false);
+        return;
+      }
+    }
+    setNameStatus({ state: "idle" });
     updateProfile({
       fullName,
+      username,
       major,
       gradYear: Number(gradYear),
       bio,
     });
+    setSaving(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2400);
   };
@@ -185,19 +178,24 @@ function SettingsForm({ profile }: { profile: Profile }) {
             icon={<User className="h-4 w-4" />}
           />
 
-          {/* Avatar + color */}
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="gradient-border glow-ring inline-block shrink-0 self-start rounded-full p-1.5">
-              <Avatar
-                name={fullName || profile.fullName}
-                gradient={profile.avatarColor}
-                size="lg"
-              />
-            </div>
-            <div className="min-w-0">
+          {/* Profile picture */}
+          <div className="mb-6">
+            <AvatarPicker
+              value={profile.avatarUrl}
+              onChange={(url) => updateProfile({ avatarUrl: url })}
+              userId={profile.id}
+              fallback={initials(fullName || profile.fullName)}
+              gradient={profile.avatarColor}
+            />
+          </div>
+
+          {/* The gradient is only ever seen when there's no photo, so it's a
+              fallback setting now rather than the only way to have an avatar. */}
+          {!profile.avatarUrl && (
+            <div className="mb-6">
               <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">
                 <Palette className="h-3.5 w-3.5" />
-                Avatar color
+                Initials color
               </p>
               <div className="flex flex-wrap gap-2">
                 {avatarGradients.map((g) => {
@@ -221,7 +219,7 @@ function SettingsForm({ profile }: { profile: Profile }) {
                 })}
               </div>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -231,6 +229,32 @@ function SettingsForm({ profile }: { profile: Profile }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
+            </div>
+            <div>
+              <Label>Username</Label>
+              <input
+                className={fieldClass}
+                value={username}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => {
+                  setUsername(normalizeUsername(e.target.value));
+                  setNameStatus({ state: "idle" });
+                }}
+              />
+              <p
+                className={cn(
+                  "mt-1.5 text-xs",
+                  nameStatus.state === "taken" || nameStatus.state === "invalid"
+                    ? "text-rose-400"
+                    : "text-white/35",
+                )}
+              >
+                {nameStatus.state === "taken" || nameStatus.state === "invalid"
+                  ? nameStatus.message
+                  : `@${username || profile.username}`}
+              </p>
             </div>
             <div>
               <Label>Major</Label>
@@ -395,13 +419,21 @@ function SettingsForm({ profile }: { profile: Profile }) {
                   <p className="text-xs text-white/45">{row.desc}</p>
                 </div>
                 <Toggle
-                  checked={notify[row.key]}
-                  onChange={(next) => setNotify(row.key, next)}
+                  checked={notifyPrefs[row.key]}
+                  onChange={(next) => void setNotify(row.key, next)}
                   label={row.title}
                 />
               </div>
             ))}
           </div>
+          {notifyError && (
+            <p
+              role="alert"
+              className="mt-4 rounded-xl bg-amber-400/10 px-3 py-2 text-xs text-amber-200"
+            >
+              {notifyError}
+            </p>
+          )}
         </Card>
       </Reveal>
 
@@ -422,12 +454,24 @@ function SettingsForm({ profile }: { profile: Profile }) {
               </div>
             </div>
 
-            <Disclaimer>
-              <strong className="font-semibold text-white/60">Demo mode.</strong>{" "}
-              No Supabase keys are configured, so Campus Capital is running as a
-              local demo. Your edits are saved on this device only and
-              aren&apos;t synced to a real account.
-            </Disclaimer>
+            {/* This used to render unconditionally, so a fully-configured
+                backend still told every user their data was local-only. */}
+            {!isSupabaseConfigured ? (
+              <Disclaimer>
+                <strong className="font-semibold text-white/60">Demo mode.</strong>{" "}
+                No Supabase keys are configured, so Campus Capital is running as a
+                local demo. Your edits are saved on this device only and
+                aren&apos;t synced to a real account.
+              </Disclaimer>
+            ) : !emailVerified ? (
+              <Disclaimer>
+                <strong className="font-semibold text-amber-300">
+                  Email not confirmed.
+                </strong>{" "}
+                Your progress is saved, but you can&apos;t post or join clubs
+                until you click the link we sent you.
+              </Disclaimer>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="secondary" href="/profile">

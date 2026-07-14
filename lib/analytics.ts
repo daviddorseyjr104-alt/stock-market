@@ -11,7 +11,9 @@ import { track as vercelTrack } from "@vercel/analytics";
  */
 export type AnalyticsEvent =
   | "signup_completed"
+  | "login"
   | "login_demo"
+  | "club_joined"
   | "lesson_completed"
   | "quiz_finished"
   | "trade_executed"

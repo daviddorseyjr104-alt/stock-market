@@ -20,6 +20,41 @@ export function dateKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// ── Hearts ──────────────────────────────────────────────────────────────────
+// Hearts regenerate on a timer. They used to refill only at local midnight,
+// which meant one bad lesson could lock a learner out of the entire app until
+// the next calendar day, with no in-app way back.
+export const HEART_REGEN_MINUTES = 25;
+const HEART_REGEN_MS = HEART_REGEN_MINUTES * 60_000;
+
+/** Accrues any hearts earned since `updatedAt`. Pure; caller supplies `now`. */
+export function regenerateHearts(
+  hearts: number,
+  maxHearts: number,
+  updatedAt: number | null,
+  now: number,
+): { hearts: number; updatedAt: number | null } {
+  if (hearts >= maxHearts) return { hearts, updatedAt: null };
+  // First tick below max starts the clock.
+  if (updatedAt === null) return { hearts, updatedAt: now };
+  const earned = Math.floor((now - updatedAt) / HEART_REGEN_MS);
+  if (earned <= 0) return { hearts, updatedAt };
+  const next = Math.min(maxHearts, hearts + earned);
+  if (next >= maxHearts) return { hearts: next, updatedAt: null };
+  // Carry the remainder forward so partial progress to the next heart survives.
+  return { hearts: next, updatedAt: updatedAt + (next - hearts) * HEART_REGEN_MS };
+}
+
+/** Epoch ms when the next heart lands, or null when already full. */
+export function nextHeartAt(
+  hearts: number,
+  maxHearts: number,
+  updatedAt: number | null,
+): number | null {
+  if (hearts >= maxHearts || updatedAt === null) return null;
+  return updatedAt + HEART_REGEN_MS;
+}
+
 /** Returns the next streak value given the last active date. */
 export function nextStreak(current: number, lastActive: string | null): number {
   const today = dateKey();

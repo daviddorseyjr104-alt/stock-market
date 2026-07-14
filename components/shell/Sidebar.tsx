@@ -64,7 +64,12 @@ export function Sidebar() {
         className="glass rounded-2xl p-3.5 transition-colors hover:border-white/20"
       >
         <div className="flex items-center gap-3">
-          <Avatar name={currentUser.fullName} gradient={currentUser.avatarColor} size="sm" />
+          <Avatar
+            name={currentUser.fullName}
+            gradient={currentUser.avatarColor}
+            src={currentUser.avatarUrl}
+            size="sm"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-white">
               {currentUser.fullName}

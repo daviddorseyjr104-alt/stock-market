@@ -119,6 +119,7 @@ export default function ProfilePage() {
                 <Avatar
                   name={profile.fullName}
                   gradient={profile.avatarColor}
+                  src={profile.avatarUrl}
                   size="xl"
                   className="shadow-float"
                 />

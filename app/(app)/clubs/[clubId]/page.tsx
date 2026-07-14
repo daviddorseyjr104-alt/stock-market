@@ -21,6 +21,19 @@ export default function ClubDetailPage({ params }: { params: { clubId: string } 
   const club = clubById(params.clubId);
   const { profile, toggleClub, isClubMember, hydrated } = useAppState();
   const [members, setMembers] = useState<ClubMember[]>([]);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  async function handleToggle() {
+    if (!club) return;
+    setJoinError(null);
+    const result = await toggleClub(club.id);
+    if (result.ok) return;
+    setJoinError(
+      result.reason === "verify"
+        ? "Confirm your email to join clubs."
+        : (result.message ?? "That didn't work. Try again."),
+    );
+  }
 
   useEffect(() => {
     // Only real members are ever shown. Without a live backend there are no
@@ -126,7 +139,7 @@ export default function ClubDetailPage({ params }: { params: { clubId: string } 
               </div>
               <Button
                 variant={joined ? "secondary" : "primary"}
-                onClick={() => toggleClub(club.id)}
+                onClick={handleToggle}
                 disabled={!hydrated}
                 aria-pressed={joined}
                 className={cn(joined && "border-capital-400/30 text-capital-300")}
@@ -157,6 +170,15 @@ export default function ClubDetailPage({ params }: { params: { clubId: string } 
                 </AnimatePresence>
               </Button>
             </div>
+
+            {joinError && (
+              <p
+                role="alert"
+                className="relative mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-300"
+              >
+                {joinError}
+              </p>
+            )}
 
             <div className="relative mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/55">
               <span className="inline-flex items-center gap-1.5">
@@ -236,7 +258,7 @@ export default function ClubDetailPage({ params }: { params: { clubId: string } 
             <h2 className="mb-3 font-display text-lg font-semibold tracking-tight text-white">
               Club feed
             </h2>
-            <ClubFeed clubId={club.id} />
+            <ClubFeed club={club} />
           </motion.div>
         </div>
 
@@ -268,7 +290,13 @@ export default function ClubDetailPage({ params }: { params: { clubId: string } 
                       transition={springSoft}
                       className="flex items-center gap-3 rounded-2xl bg-capital-400/[0.06] px-2 py-1.5"
                     >
-                      <Avatar name={profile.fullName} gradient={profile.avatarColor} size="sm" ring />
+                      <Avatar
+                        name={profile.fullName}
+                        gradient={profile.avatarColor}
+                        src={profile.avatarUrl}
+                        size="sm"
+                        ring
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-white">{profile.fullName}</p>
                         <p className="truncate text-xs text-white/45">

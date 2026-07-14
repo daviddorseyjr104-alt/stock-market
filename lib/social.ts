@@ -23,6 +23,8 @@ export interface FeedAuthor {
   id: string;
   name: string;
   avatarColor: string;
+  /** Uploaded profile picture, when the author has one. */
+  avatarUrl?: string;
   schoolId: string | null;
 }
 
@@ -100,7 +102,7 @@ export async function getFeed(): Promise<FeedPost[]> {
     const { data, error } = await sb
       .from("posts")
       .select(
-        "id, body, category, club_id, school_id, attachment, created_at, author:profiles(id, full_name, avatar_color, school_id), comments(id, body, created_at, author:profiles(id, full_name, avatar_color, school_id)), reactions(user_id)",
+        "id, body, category, club_id, school_id, attachment, created_at, author:profiles(id, full_name, avatar_color, avatar_url, school_id), comments(id, body, created_at, author:profiles(id, full_name, avatar_color, avatar_url, school_id)), reactions(user_id)",
       )
       .order("created_at", { ascending: false })
       .limit(60);
@@ -114,12 +116,12 @@ export async function getFeed(): Promise<FeedPost[]> {
       school_id: string | null;
       attachment: FeedPost["attachment"] | null;
       created_at: string;
-      author: { id: string; full_name: string; avatar_color: string; school_id: string | null } | null;
+      author: { id: string; full_name: string; avatar_color: string; avatar_url: string | null; school_id: string | null } | null;
       comments: {
         id: string;
         body: string;
         created_at: string;
-        author: { id: string; full_name: string; avatar_color: string; school_id: string | null } | null;
+        author: { id: string; full_name: string; avatar_color: string; avatar_url: string | null; school_id: string | null } | null;
       }[];
       reactions: { user_id: string }[];
     };
@@ -127,7 +129,7 @@ export async function getFeed(): Promise<FeedPost[]> {
     return (data as unknown as Row[]).map((r) => ({
       id: r.id,
       author: r.author
-        ? { id: r.author.id, name: r.author.full_name, avatarColor: r.author.avatar_color, schoolId: r.author.school_id }
+        ? { id: r.author.id, name: r.author.full_name, avatarColor: r.author.avatar_color, avatarUrl: r.author.avatar_url ?? undefined, schoolId: r.author.school_id }
         : { id: "", name: "Student", avatarColor: "from-capital-400 to-violet-500", schoolId: null },
       category: r.category,
       body: r.body,
@@ -142,7 +144,7 @@ export async function getFeed(): Promise<FeedPost[]> {
           body: c.body,
           createdAt: c.created_at,
           author: c.author
-            ? { id: c.author.id, name: c.author.full_name, avatarColor: c.author.avatar_color, schoolId: c.author.school_id }
+            ? { id: c.author.id, name: c.author.full_name, avatarColor: c.author.avatar_color, avatarUrl: c.author.avatar_url ?? undefined, schoolId: c.author.school_id }
             : { id: "", name: "Student", avatarColor: "from-capital-400 to-violet-500", schoolId: null },
         })),
       createdAt: r.created_at,
@@ -179,26 +181,30 @@ export async function createPost(input: {
 
   const sb = createClient();
   if (!sb) return optimistic;
-  try {
-    const {
-      data: { user },
-    } = await sb.auth.getUser();
-    if (!user) return optimistic;
-    const { data } = await sb
-      .from("posts")
-      .insert({
-        author_id: user.id,
-        body: input.body,
-        category: input.category,
-        club_id: input.clubId ?? null,
-        school_id: input.author.schoolId,
-      })
-      .select("id, created_at")
-      .maybeSingle();
-    return { ...optimistic, id: data?.id ?? optimistic.id, createdAt: data?.created_at ?? optimistic.createdAt };
-  } catch {
-    return optimistic;
-  }
+  // A failed insert used to return the optimistic post anyway, so the post
+  // rendered, was never stored, and silently vanished on the next refresh.
+  // Throw instead: the composer surfaces the reason and keeps the user's draft.
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) throw new Error("Your session expired. Sign in again to post.");
+  const { data, error } = await sb
+    .from("posts")
+    .insert({
+      author_id: user.id,
+      body: input.body,
+      category: input.category,
+      club_id: input.clubId ?? null,
+      school_id: input.author.schoolId,
+    })
+    .select("id, created_at")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return {
+    ...optimistic,
+    id: data?.id ?? optimistic.id,
+    createdAt: data?.created_at ?? optimistic.createdAt,
+  };
 }
 
 export async function toggleLike(postId: string, liked: boolean): Promise<void> {
@@ -397,31 +403,38 @@ export async function getClubMembers(clubId: string): Promise<ClubMember[]> {
   }
 }
 
-export async function joinClub(clubId: string): Promise<void> {
-  if (!socialIsReal) return;
+/** Returns an error message on failure, or null on success. */
+export async function joinClub(clubId: string): Promise<string | null> {
+  if (!socialIsReal) return null;
   const sb = createClient();
-  if (!sb) return;
+  if (!sb) return null;
   try {
     const { data: { user } } = await sb.auth.getUser();
-    if (!user) return;
-    await sb.from("club_members").upsert(
+    if (!user) return "You need to be signed in to join a club.";
+    const { error } = await sb.from("club_members").upsert(
       { club_id: clubId, user_id: user.id },
       { onConflict: "club_id,user_id" },
     );
-  } catch {
-    /* non-fatal */
+    return error ? error.message : null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Could not join the club.";
   }
 }
 
-export async function leaveClub(clubId: string): Promise<void> {
-  if (!socialIsReal) return;
+export async function leaveClub(clubId: string): Promise<string | null> {
+  if (!socialIsReal) return null;
   const sb = createClient();
-  if (!sb) return;
+  if (!sb) return null;
   try {
     const { data: { user } } = await sb.auth.getUser();
-    if (!user) return;
-    await sb.from("club_members").delete().eq("club_id", clubId).eq("user_id", user.id);
-  } catch {
-    /* non-fatal */
+    if (!user) return "You need to be signed in.";
+    const { error } = await sb
+      .from("club_members")
+      .delete()
+      .eq("club_id", clubId)
+      .eq("user_id", user.id);
+    return error ? error.message : null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Could not leave the club.";
   }
 }

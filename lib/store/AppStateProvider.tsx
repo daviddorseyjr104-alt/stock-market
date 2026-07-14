@@ -19,6 +19,7 @@ import type {
   Interest,
   InvestingLevel,
   Notification,
+  NotificationType,
   Portfolio,
   Position,
   Post,
@@ -29,6 +30,8 @@ import type {
   Skill,
   StudentType,
 } from "@/lib/types";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { joinClub as remoteJoinClub, leaveClub as remoteLeaveClub } from "@/lib/social";
 import { currentUser as demoPersona } from "@/lib/data/people";
 import { posts as seedPosts } from "@/lib/data/posts";
 import { defaultPortfolio } from "@/lib/data/portfolio";
@@ -49,12 +52,16 @@ import {
   courseProgress,
   dateKey,
   levelForXp,
+  nextHeartAt,
   nextStreak,
+  regenerateHearts,
 } from "./progression";
 import {
   getRepository,
+  DEFAULT_NOTIFY,
   SNAPSHOT_VERSION,
   type DailyXp,
+  type NotifyPrefs,
   type Snapshot,
   type EquityPoint,
 } from "./repository";
@@ -76,6 +83,23 @@ function welcomeNote(createdAt: string): Notification {
 
 function freshDailyXp(date = dateKey()): DailyXp {
   return { date, xp: 0, correct: 0, lessons: 0, minutes: 0 };
+}
+
+/** Maps each notification kind onto the Settings switch that governs it. */
+function allowsNotification(prefs: NotifyPrefs, type: NotificationType): boolean {
+  switch (type) {
+    case "streak":
+      return prefs.streak;
+    case "lesson":
+    case "badge":
+    case "challenge":
+      return prefs.lessons;
+    case "school":
+      return prefs.rank;
+    case "follow":
+    case "comment":
+      return prefs.social;
+  }
 }
 
 // The demo persona keeps their identity, but every EARNED stat starts at
@@ -105,6 +129,10 @@ function demoSnapshot(): Snapshot {
   return {
     v: SNAPSHOT_VERSION,
     authed: false,
+    // With no backend there is no address to confirm, so demo mode is trusted.
+    // With Supabase live this is overwritten from `user.email_confirmed_at`.
+    emailVerified: !isSupabaseConfigured,
+    onboarded: false,
     profile: freshDemoProfile(),
     posts: seedPosts,
     portfolio: structuredClonePortfolio(defaultPortfolio),
@@ -112,13 +140,13 @@ function demoSnapshot(): Snapshot {
     challengeProgress: {},
     lastActiveDate: null,
     equityHistory: [],
-    heartsLastRefill: null,
+    heartsUpdatedAt: null,
     dailyXp: freshDailyXp("1970-01-01"),
     questProgress: {},
     coachNotes: [],
     savedProjects: [],
-    rsvps: [],
     certificates: [],
+    notifyPrefs: DEFAULT_NOTIFY,
   };
 }
 
@@ -126,24 +154,27 @@ function structuredClonePortfolio(p: Portfolio): Portfolio {
   return { ...p, positions: p.positions.map((h) => ({ ...h })) };
 }
 
-// ── Daily rollover (pure) ──────────────────────────────────────────────────
-// On a new local day: hearts refill to max, dailyXp counters and quest
-// progress reset. Idempotent, applied during hydrate and on every reconcile.
-function rolloverDay(s: Snapshot): Snapshot {
+// ── Daily rollover + heart regen (pure) ────────────────────────────────────
+// On a new local day: dailyXp counters and quest progress reset. Hearts are no
+// longer tied to the calendar day — they accrue on a timer (see progression.ts)
+// so running out is a short pause, never a lockout until midnight.
+// Idempotent, applied during hydrate and on every reconcile.
+function rolloverDay(s: Snapshot, now: number): Snapshot {
   const today = dateKey();
   let next = s;
   if (s.dailyXp.date !== today) {
     next = { ...next, dailyXp: freshDailyXp(today), questProgress: {} };
   }
-  if (s.heartsLastRefill !== today) {
+  const max = next.profile.maxHearts ?? MAX_HEARTS;
+  const regen = regenerateHearts(next.profile.hearts ?? max, max, next.heartsUpdatedAt, now);
+  if (
+    regen.hearts !== (next.profile.hearts ?? max) ||
+    regen.updatedAt !== next.heartsUpdatedAt
+  ) {
     next = {
       ...next,
-      heartsLastRefill: today,
-      profile: {
-        ...next.profile,
-        hearts: next.profile.maxHearts ?? MAX_HEARTS,
-        maxHearts: next.profile.maxHearts ?? MAX_HEARTS,
-      },
+      heartsUpdatedAt: regen.updatedAt,
+      profile: { ...next.profile, hearts: regen.hearts, maxHearts: max },
     };
   }
   return next;
@@ -197,8 +228,13 @@ export interface BuyOrder {
 }
 
 export interface SignupInput {
+  /** Supabase auth user id, when a real session was created. */
+  id?: string;
   fullName: string;
+  username: string;
+  avatarUrl?: string;
   email: string;
+  emailVerified?: boolean;
   schoolId: string;
   major: string;
   gradYear: number;
@@ -207,6 +243,13 @@ export interface SignupInput {
   goal: Goal;
   interests: Interest[];
   clubId?: string | null;
+}
+
+/** `reason: "verify"` means the account exists but the email isn't confirmed yet. */
+export interface ClubActionResult {
+  ok: boolean;
+  reason?: "verify" | "error";
+  message?: string;
 }
 
 export interface LessonReward {
@@ -246,12 +289,18 @@ interface AppStateValue {
   dailyXp: DailyXp;
   coachNotes: CoachNote[];
   savedProjects: SavedProject[];
-  rsvps: string[];
   certificates: Certificate[];
 
   // auth
+  /** Backend-confirmed email address. Gates clubs and posting. */
+  emailVerified: boolean;
+  /** Has the user picked a username + avatar yet? */
+  onboarded: boolean;
   loginAsDemo: () => void;
+  /** Adopt an existing Supabase session and rebuild state from the backend. */
+  beginSession: () => Promise<void>;
   signUp: (input: SignupInput) => void;
+  completeOnboarding: (input: { username: string; avatarUrl?: string }) => void;
   logout: () => void;
 
   // learning
@@ -263,9 +312,16 @@ interface AppStateValue {
 
   // hearts + answers
   hearts: number;
+  maxHearts: number;
+  /** Epoch ms the next heart lands, or null when full. */
+  nextHeartAt: number | null;
   loseHeart: () => number;
   refillHearts: () => void;
-  recordAnswer: (correct: boolean, xp?: number) => { hearts: number };
+  recordAnswer: (
+    correct: boolean,
+    xp?: number,
+    opts?: { practice?: boolean },
+  ) => { hearts: number };
 
   // quests
   questProgressFor: (dateKey: string) => QuestStatus[];
@@ -281,12 +337,10 @@ interface AppStateValue {
   }) => SavedProject;
   deleteProject: (id: string) => void;
 
-  // campus + clubs
-  toggleRsvp: (eventId: string) => void;
-  hasRsvp: (eventId: string) => boolean;
-  joinClub: (clubId: string) => void;
-  leaveClub: (clubId: string) => void;
-  toggleClub: (clubId: string) => void;
+  // clubs
+  joinClub: (clubId: string) => Promise<ClubActionResult>;
+  leaveClub: (clubId: string) => Promise<ClubActionResult>;
+  toggleClub: (clubId: string) => Promise<ClubActionResult>;
   isClubMember: (clubId: string) => boolean;
 
   // social
@@ -300,6 +354,11 @@ interface AppStateValue {
   sell: (positionId: string, shares: number, price: number) => void;
   resetPortfolio: () => void;
   recordEquity: (value: number) => void;
+
+  // notification preferences
+  notifyPrefs: NotifyPrefs;
+  /** Returns false when the browser denied permission for a push-style pref. */
+  setNotifyPref: (key: keyof NotifyPrefs, value: boolean) => Promise<boolean>;
 
   // misc
   markNotificationRead: (id: string) => void;
@@ -319,7 +378,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // Recompute derived progression fields (level, badges, skills) after a
   // state change, and apply the daily rollover (hearts refill, daily resets).
   const reconcile = useCallback((s: Snapshot): Snapshot => {
-    const rolled = rolloverDay(s);
+    const rolled = rolloverDay(s, Date.now());
     const level = levelForXp(rolled.profile.xp);
     const badges = computeBadges(rolled.profile, rolled.portfolio.positions, {
       dailyCorrect: rolled.dailyXp.correct,
@@ -334,7 +393,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // Hydrate from persistence once on mount.
   useEffect(() => {
     let alive = true;
-    repo.load().then((loaded) => {
+    repo.load(demoSnapshot()).then((loaded) => {
       if (!alive) return;
       // Reconcile either the loaded snapshot or the in-memory demo one so the
       // daily rollover (hearts refill, dailyXp date) runs client-side.
@@ -360,20 +419,49 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setSnap((s) => updater(s));
   }, []);
 
+  // Hearts accrue with wall-clock time, but nothing re-renders on its own while
+  // the user sits on the out-of-hearts screen. Tick reconcile while below max so
+  // the refill actually lands (and the countdown resolves) without a reload.
+  const heartsNow = snap.profile.hearts ?? MAX_HEARTS;
+  const heartsMax = snap.profile.maxHearts ?? MAX_HEARTS;
+  useEffect(() => {
+    if (!hydrated || heartsNow >= heartsMax) return;
+    const id = setInterval(() => {
+      // Returning the same reference when nothing changed avoids a re-render
+      // and, with it, a pointless save every tick.
+      patch((s) => {
+        const next = reconcile(s);
+        return next.profile.hearts === s.profile.hearts ? s : next;
+      });
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [hydrated, heartsNow, heartsMax, patch, reconcile]);
+
   // ── Auth ─────────────────────────────────────────────────────────────────
+  // Keyless demo only: hand the visitor a fresh, explorable session. This must
+  // never run on a real login — it would replace the signed-in user's profile
+  // with a blank "Guest" and then autosave that over their row in the database.
   const loginAsDemo = useCallback(() => {
-    patch(() => reconcile({ ...demoSnapshot(), authed: true }));
+    patch(() => reconcile({ ...demoSnapshot(), authed: true, onboarded: true }));
   }, [patch, reconcile]);
+
+  // Real login: the Supabase session already exists, so re-read through the
+  // repository, which rebuilds the snapshot from the backend for *this* user.
+  const beginSession = useCallback(async () => {
+    const loaded = await repo.load(demoSnapshot());
+    patch((s) => reconcile(loaded ?? { ...s, authed: true }));
+  }, [patch, reconcile, repo]);
 
   const signUp = useCallback(
     (input: SignupInput) => {
-      const username = input.email.split("@")[0] || "student";
+      const username = input.username.trim() || input.email.split("@")[0] || "student";
       const fresh: Profile = {
-        id: `u-${username}-${dateKey().replace(/-/g, "")}`,
+        id: input.id ?? `u-${username}-${dateKey().replace(/-/g, "")}`,
         fullName: input.fullName,
         username,
         email: input.email,
         avatarColor: "from-capital-400 to-violet-500",
+        avatarUrl: input.avatarUrl,
         schoolId: input.schoolId,
         major: input.major,
         gradYear: input.gradYear,
@@ -391,7 +479,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         following: 0,
         badges: [],
         completedLessons: [],
-        clubs: input.clubId ? [input.clubId] : [],
+        // Club membership is earned after verification, never granted at signup.
+        clubs: [],
         joinedAt: new Date().toISOString(),
         hearts: MAX_HEARTS,
         maxHearts: MAX_HEARTS,
@@ -400,6 +489,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       patch(() => ({
         v: SNAPSHOT_VERSION,
         authed: true,
+        emailVerified: input.emailVerified ?? !isSupabaseConfigured,
+        onboarded: true,
         profile: fresh,
         posts: seedPosts, // the campus feed is shared/social content
         portfolio: structuredClonePortfolio(defaultPortfolio),
@@ -407,13 +498,49 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         challengeProgress: {},
         lastActiveDate: null,
         equityHistory: [],
-        heartsLastRefill: dateKey(),
+        heartsUpdatedAt: null,
         dailyXp: freshDailyXp(),
         questProgress: {},
         coachNotes: [],
         savedProjects: [],
-        rsvps: [],
         certificates: [],
+        notifyPrefs: DEFAULT_NOTIFY,
+      }));
+    },
+    [patch],
+  );
+
+  // Streak reminders are the one pref that needs to leave the app, so turning it
+  // on asks the browser for permission. A denied prompt reports back as `false`
+  // instead of leaving a switch flipped on that can never fire anything.
+  const setNotifyPref = useCallback(
+    async (key: keyof NotifyPrefs, value: boolean): Promise<boolean> => {
+      if (value && key === "streak" && typeof window !== "undefined" && "Notification" in window) {
+        const permission =
+          Notification.permission === "default"
+            ? await Notification.requestPermission()
+            : Notification.permission;
+        if (permission !== "granted") {
+          patch((s) => ({ ...s, notifyPrefs: { ...s.notifyPrefs, streak: false } }));
+          return false;
+        }
+      }
+      patch((s) => ({ ...s, notifyPrefs: { ...s.notifyPrefs, [key]: value } }));
+      return true;
+    },
+    [patch],
+  );
+
+  const completeOnboarding = useCallback(
+    (input: { username: string; avatarUrl?: string }) => {
+      patch((s) => ({
+        ...s,
+        onboarded: true,
+        profile: {
+          ...s.profile,
+          username: input.username,
+          avatarUrl: input.avatarUrl ?? s.profile.avatarUrl,
+        },
       }));
     },
     [patch],
@@ -494,7 +621,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           reward = { xpGained: 0, leveledUp: false, newBadgeIds: [], alreadyDone: true };
           return raw;
         }
-        const s = rolloverDay(raw);
+        const s = rolloverDay(raw, Date.now());
         const prevLevel = levelForXp(s.profile.xp);
         const prevBadges = new Set(s.profile.badges);
 
@@ -595,7 +722,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             href: "/profile",
           });
         }
-        return { ...next, notifications: [...notes, ...next.notifications] };
+        // The bell used to fire regardless of what the user had switched off in
+        // Settings; the toggles now actually decide what gets generated.
+        const allowed = notes.filter((n) => allowsNotification(next.notifyPrefs, n.type));
+        return { ...next, notifications: [...allowed, ...next.notifications] };
       });
 
       return reward;
@@ -604,13 +734,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   );
 
   // ── Hearts + answers ───────────────────────────────────────────────────────
+  // Dropping below max starts the regen clock if it isn't already running;
+  // leaving an already-running clock alone means losing a second heart doesn't
+  // reset the progress made toward the first one.
+  function spendHeart(s: Snapshot, now: number): { next: Snapshot; remaining: number } {
+    const max = s.profile.maxHearts ?? MAX_HEARTS;
+    const remaining = Math.max(0, (s.profile.hearts ?? max) - 1);
+    return {
+      next: {
+        ...s,
+        heartsUpdatedAt: s.heartsUpdatedAt ?? now,
+        profile: { ...s.profile, hearts: remaining, maxHearts: max },
+      },
+      remaining,
+    };
+  }
+
   const loseHeart = useCallback((): number => {
     let remaining = 0;
     patch((raw) => {
-      const s = rolloverDay(raw);
-      const current = s.profile.hearts ?? MAX_HEARTS;
-      remaining = Math.max(0, current - 1);
-      return { ...s, profile: { ...s.profile, hearts: remaining } };
+      const now = Date.now();
+      const r = spendHeart(rolloverDay(raw, now), now);
+      remaining = r.remaining;
+      return r.next;
     });
     return remaining;
   }, [patch]);
@@ -618,20 +764,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const refillHearts = useCallback(() => {
     patch((s) => ({
       ...s,
-      heartsLastRefill: dateKey(),
+      heartsUpdatedAt: null,
       profile: { ...s.profile, hearts: s.profile.maxHearts ?? MAX_HEARTS },
     }));
   }, [patch]);
 
   const recordAnswer = useCallback(
-    (correct: boolean, xp = 10): { hearts: number } => {
+    (correct: boolean, xp = 10, opts?: { practice?: boolean }): { hearts: number } => {
       let hearts = 0;
       patch((raw) => {
-        const s = rolloverDay(raw);
+        const now = Date.now();
+        const s = rolloverDay(raw, now);
+        // Practice runs are for learning, not scoring: no hearts spent, no XP earned.
+        if (opts?.practice) {
+          hearts = s.profile.hearts ?? MAX_HEARTS;
+          return s;
+        }
         if (!correct) {
-          const remaining = Math.max(0, (s.profile.hearts ?? MAX_HEARTS) - 1);
-          hearts = remaining;
-          return { ...s, profile: { ...s.profile, hearts: remaining } };
+          const r = spendHeart(s, now);
+          hearts = r.remaining;
+          return r.next;
         }
         hearts = s.profile.hearts ?? MAX_HEARTS;
         const withXp: Snapshot = {
@@ -724,54 +876,47 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [patch],
   );
 
-  // ── Campus events + clubs ──────────────────────────────────────────────────
-  const toggleRsvp = useCallback(
-    (eventId: string) =>
-      patch((s) => ({
-        ...s,
-        rsvps: s.rsvps.includes(eventId)
-          ? s.rsvps.filter((id) => id !== eventId)
-          : [...s.rsvps, eventId],
-      })),
-    [patch],
-  );
-
-  const hasRsvp = useCallback(
-    (eventId: string) => snap.rsvps.includes(eventId),
-    [snap.rsvps],
-  );
-
+  // ── Clubs ──────────────────────────────────────────────────────────────────
+  // Membership is a claim about a real person, so it requires a confirmed email
+  // and is written through to `club_members` — not just held in local state.
   const joinClub = useCallback(
-    (clubId: string) =>
+    async (clubId: string) => {
+      if (!snap.emailVerified) return { ok: false, reason: "verify" as const };
       patch((s) =>
         s.profile.clubs.includes(clubId)
           ? s
           : { ...s, profile: { ...s.profile, clubs: [...s.profile.clubs, clubId] } },
-      ),
-    [patch],
+      );
+      const err = await remoteJoinClub(clubId);
+      if (err) {
+        // Roll the optimistic membership back rather than show a join that never landed.
+        patch((s) => ({
+          ...s,
+          profile: { ...s.profile, clubs: s.profile.clubs.filter((c) => c !== clubId) },
+        }));
+        return { ok: false, reason: "error" as const, message: err };
+      }
+      return { ok: true as const };
+    },
+    [patch, snap.emailVerified],
   );
 
   const leaveClub = useCallback(
-    (clubId: string) =>
+    async (clubId: string) => {
       patch((s) => ({
         ...s,
         profile: { ...s.profile, clubs: s.profile.clubs.filter((c) => c !== clubId) },
-      })),
+      }));
+      await remoteLeaveClub(clubId);
+      return { ok: true as const };
+    },
     [patch],
   );
 
   const toggleClub = useCallback(
     (clubId: string) =>
-      patch((s) => ({
-        ...s,
-        profile: {
-          ...s.profile,
-          clubs: s.profile.clubs.includes(clubId)
-            ? s.profile.clubs.filter((c) => c !== clubId)
-            : [...s.profile.clubs, clubId],
-        },
-      })),
-    [patch],
+      snap.profile.clubs.includes(clubId) ? leaveClub(clubId) : joinClub(clubId),
+    [snap.profile.clubs, joinClub, leaveClub],
   );
 
   const isClubMember = useCallback(
@@ -968,17 +1113,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     dailyXp: snap.dailyXp,
     coachNotes: snap.coachNotes,
     savedProjects: snap.savedProjects,
-    rsvps: snap.rsvps,
     certificates: snap.certificates,
+    emailVerified: snap.emailVerified,
+    onboarded: snap.onboarded,
     loginAsDemo,
+    beginSession,
     signUp,
+    completeOnboarding,
     logout,
     isCourseUnlocked,
     isLessonUnlocked,
     isLessonComplete,
     completeLesson,
     skillProgress,
-    hearts: snap.profile.hearts ?? MAX_HEARTS,
+    hearts: heartsNow,
+    maxHearts: heartsMax,
+    nextHeartAt: nextHeartAt(heartsNow, heartsMax, snap.heartsUpdatedAt),
     loseHeart,
     refillHearts,
     recordAnswer,
@@ -987,12 +1137,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     deleteCoachNote,
     saveProject,
     deleteProject,
-    toggleRsvp,
-    hasRsvp,
     joinClub,
     leaveClub,
     toggleClub,
     isClubMember,
+    notifyPrefs: snap.notifyPrefs,
+    setNotifyPref,
     toggleLike,
     addPost,
     addComment,

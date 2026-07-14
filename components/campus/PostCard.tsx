@@ -30,7 +30,7 @@ export function PostCard({
   onComment,
 }: {
   post: FeedPost;
-  currentUser: { name: string; avatarColor: string };
+  currentUser: { name: string; avatarColor: string; avatarUrl?: string };
   onLike: () => void;
   onComment: (body: string) => void;
 }) {
@@ -49,7 +49,12 @@ export function PostCard({
   return (
     <Card hover className="animate-fade-up">
       <div className="flex items-start gap-3">
-        <Avatar name={post.author.name} gradient={post.author.avatarColor} size="md" />
+        <Avatar
+          name={post.author.name}
+          gradient={post.author.avatarColor}
+          src={post.author.avatarUrl}
+          size="md"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="truncate font-semibold text-white">{post.author.name}</span>
@@ -129,7 +134,12 @@ export function PostCard({
             <ul className="space-y-3.5">
               {post.comments.map((comment) => (
                 <li key={comment.id} className="flex items-start gap-2.5">
-                  <Avatar name={comment.author.name} gradient={comment.author.avatarColor} size="xs" />
+                  <Avatar
+                    name={comment.author.name}
+                    gradient={comment.author.avatarColor}
+                    src={comment.author.avatarUrl}
+                    size="xs"
+                  />
                   <div className="min-w-0 flex-1 rounded-2xl bg-white/[0.03] px-3.5 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-white">{comment.author.name}</span>
@@ -145,7 +155,12 @@ export function PostCard({
           )}
 
           <div className="flex items-center gap-2.5">
-            <Avatar name={currentUser.name} gradient={currentUser.avatarColor} size="xs" />
+            <Avatar
+              name={currentUser.name}
+              gradient={currentUser.avatarColor}
+              src={currentUser.avatarUrl}
+              size="xs"
+            />
             <div className="flex flex-1 items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] py-1 pl-4 pr-1 focus-within:border-white/20">
               <input
                 value={draft}
