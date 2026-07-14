@@ -13,6 +13,15 @@ In the Supabase SQL editor, run in order:
    and club membership, and the Capital Coach daily quota.
 3. `migrations/0004_portfolio_challenges_follows.sql` — non-destructive portfolio
    writes, durable challenge payouts, and real follows.
+4. `migrations/0005_holdings_shares_avgcost.sql` — adds `shares` and `avg_cost`
+   to `portfolio_holdings`.
+
+**0005 is required.** The live table was created from an older schema that stored
+a percentage `allocation` per holding, and `setup.sql` uses
+`create table if not exists`, so re-running it never fixed the existing table.
+The app writes `shares` + `avg_cost`, which don't exist there — so **every
+portfolio save to Supabase has been failing** with PGRST204 and the error was
+discarded. Portfolios looked fine locally and were never actually stored.
 
 **0004 is required.** Without it: saving a portfolio can wipe your holdings (the
 old write was DELETE-then-INSERT with the errors discarded), completing a
