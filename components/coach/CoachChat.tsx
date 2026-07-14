@@ -39,6 +39,10 @@ interface ChatMessage {
   recommendedLessonId?: string;
   recommendedLabel?: string;
   saved?: boolean;
+  /** Quota / degradation message to show alongside the answer. */
+  notice?: string;
+  /** True when the built-in engine answered instead of a live model. */
+  offline?: boolean;
 }
 
 export interface CoachTopic {
@@ -99,23 +103,38 @@ export function CoachChat({ className }: { className?: string }) {
     // Try the API route (which upgrades to a live model when a key exists),
     // but always fall back to the offline engine, the coach works with no keys.
     let reply: CoachReply;
+    let notice: string | undefined;
     try {
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: trimmed }),
       });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      reply = (await res.json()) as CoachReply;
-      if (!Array.isArray(reply.answer) || reply.answer.length === 0) {
-        reply = getCoachResponse(trimmed);
+      const payload = (await res.json()) as CoachReply & { error?: string };
+
+      // 401/403 (not signed in / unverified) carry no answer — say so plainly
+      // rather than serving a canned reply as if the tutor had responded.
+      if (res.status === 401 || res.status === 403) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: "coach", answer: [payload.error ?? "You need a confirmed account to ask Coach."] },
+        ]);
+        setThinking(false);
+        return;
       }
+
+      reply =
+        Array.isArray(payload.answer) && payload.answer.length > 0
+          ? payload
+          : getCoachResponse(trimmed);
+      // 429 = daily quota spent; the offline answer still comes back with it.
+      notice = payload.error;
     } catch {
-      reply = getCoachResponse(trimmed);
+      reply = { ...getCoachResponse(trimmed), source: "offline" };
     }
 
-    // A short beat so the typing indicator reads naturally on instant replies.
-    await new Promise((r) => setTimeout(r, 650));
+    // Only pace instant (offline) replies; a live call already took real time.
+    if (reply.source !== "live") await new Promise((r) => setTimeout(r, 650));
 
     setMessages((prev) => [
       ...prev,
@@ -127,6 +146,8 @@ export function CoachChat({ className }: { className?: string }) {
         topic: activeTopic,
         recommendedLessonId: reply.recommendedLessonId,
         recommendedLabel: reply.recommendedLabel,
+        notice,
+        offline: reply.source === "offline",
       },
     ]);
     setThinking(false);
@@ -312,6 +333,15 @@ function CoachBubble({ message, onSave }: { message: ChatMessage; onSave: () => 
           ))}
         </div>
 
+        {message.notice && (
+          <p
+            role="status"
+            className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2 text-xs leading-relaxed text-amber-200"
+          >
+            {message.notice}
+          </p>
+        )}
+
         {message.id !== "welcome" && (
           <div className="flex flex-wrap items-center gap-2.5">
             {message.recommendedLessonId && message.recommendedLabel && (
@@ -325,7 +355,7 @@ function CoachBubble({ message, onSave }: { message: ChatMessage; onSave: () => 
                   </p>
                 </div>
                 <Button
-                  href={`/learn/${message.recommendedLessonId}`}
+                  href={`/learn/lesson/${message.recommendedLessonId}`}
                   size="sm"
                   variant="secondary"
                   className="shrink-0"

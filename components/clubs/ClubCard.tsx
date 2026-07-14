@@ -1,26 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Globe, Sparkles, Star } from "lucide-react";
+import { Check, Globe, Loader2, Sparkles, Star } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
 import { springSoft } from "@/lib/motion";
 import { useAppState } from "@/lib/store";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { Club } from "@/lib/types";
 
 export function ClubCard({ club }: { club: Club }) {
   const { toggleClub, isClubMember, hydrated } = useAppState();
   const joined = hydrated && isClubMember(club.id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleJoin(e: MouseEvent<HTMLButtonElement>) {
+  async function handleJoin(e: MouseEvent<HTMLButtonElement>) {
     // The whole card is a link, keep the Join click from navigating.
     e.preventDefault();
     e.stopPropagation();
-    toggleClub(club.id);
+    setBusy(true);
+    setError(null);
+    const result = await toggleClub(club.id);
+    setBusy(false);
+    if (result.ok) {
+      if (!joined) track("club_joined", { club: club.id });
+      return;
+    }
+    setError(
+      result.reason === "verify"
+        ? "Confirm your email to join clubs."
+        : (result.message ?? "That didn't work. Try again."),
+    );
   }
 
   return (
@@ -113,12 +128,17 @@ export function ClubCard({ club }: { club: Club }) {
             size="sm"
             variant={joined ? "secondary" : "primary"}
             onClick={handleJoin}
-            disabled={!hydrated}
+            disabled={!hydrated || busy}
             aria-pressed={joined}
             className={cn(joined && "border-capital-400/30 text-capital-300")}
           >
             <AnimatePresence mode="wait" initial={false}>
-              {joined ? (
+              {busy ? (
+                <motion.span key="busy" className="inline-flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {joined ? "Leaving" : "Joining"}
+                </motion.span>
+              ) : joined ? (
                 <motion.span
                   key="joined"
                   initial={{ opacity: 0, scale: 0.7 }}
@@ -145,6 +165,15 @@ export function ClubCard({ club }: { club: Club }) {
             </AnimatePresence>
           </Button>
         </div>
+
+        {error && (
+          <p
+            role="alert"
+            className="relative mt-3 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+          >
+            {error}
+          </p>
+        )}
       </Card>
     </Link>
   );

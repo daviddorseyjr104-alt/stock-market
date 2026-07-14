@@ -5,15 +5,10 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
-  CalendarDays,
   Flame,
-  HeartHandshake,
   LineChart,
   MessageSquareDashed,
-  MessagesSquare,
   Rocket,
-  Sparkles,
-  Trophy,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -26,13 +21,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { PostCard } from "@/components/campus/PostCard";
 import { PostComposer } from "@/components/campus/PostComposer";
-import { CampusEventCard } from "@/components/campus/CampusEventCard";
-import { campusEvents } from "@/lib/data/campus-events";
 import { clubs } from "@/lib/data/clubs";
 import { useAppState } from "@/lib/store";
 import {
   getFeed,
   getStudentLeaders,
+  getFollowing,
+  followUser,
+  unfollowUser,
   createPost,
   toggleLike,
   addComment,
@@ -45,46 +41,15 @@ import {
 import { track } from "@/lib/analytics";
 import { fadeUp, staggerContainer, springSoft } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { CampusEvent, PostCategory } from "@/lib/types";
+import type { PostCategory } from "@/lib/types";
 
-type CampusTab = "events" | "competitions" | "office-hours" | "opportunities" | "feed";
-
-const TABS: { key: CampusTab; label: string; icon: React.ReactNode }[] = [
-  { key: "events", label: "Events", icon: <CalendarDays className="h-3.5 w-3.5" /> },
-  { key: "competitions", label: "Competitions", icon: <Trophy className="h-3.5 w-3.5" /> },
-  { key: "office-hours", label: "Office hours", icon: <HeartHandshake className="h-3.5 w-3.5" /> },
-  { key: "opportunities", label: "Opportunities", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  { key: "feed", label: "Feed", icon: <MessagesSquare className="h-3.5 w-3.5" /> },
-];
-
-const TAB_KIND: Record<Exclude<CampusTab, "feed">, CampusEvent["kind"]> = {
-  events: "event",
-  competitions: "competition",
-  "office-hours": "office-hours",
-  opportunities: "opportunity",
-};
-
-const TAB_BLURB: Record<CampusTab, string> = {
-  events: "Mixers, panels, and workshops happening on campus. Show up, the network compounds too.",
-  competitions: "Pitch nights, stock pitches, and case comps with real prize money and resume lines.",
-  "office-hours": "Mentors, VCs, and upperclassmen holding the door open. Bring one sharp question.",
-  opportunities: "Applications worth your time: grants, analyst seats, and national competitions.",
-  feed: "Your money-learning network. Questions, wins, and what students are figuring out together.",
-};
+// The Events / Competitions / Office-hours / Opportunities tabs used to live
+// here. They were a hardcoded list of UCLA happenings with an RSVP button that
+// wrote to localStorage and nowhere else — unmaintainable for any campus we
+// don't physically run, so they're gone. Campus is now the student feed.
 
 export default function CampusPage() {
-  const { profile, rsvps, hydrated } = useAppState();
-  const [tab, setTab] = useState<CampusTab>("events");
-
-  const byDate = useMemo(
-    () => [...campusEvents].sort((a, b) => a.date.localeCompare(b.date)),
-    [],
-  );
-
-  const visibleEvents = useMemo(() => {
-    if (tab === "feed") return [];
-    return byDate.filter((e) => e.kind === TAB_KIND[tab]);
-  }, [tab, byDate]);
+  const { profile } = useAppState();
 
   const financeClubs = useMemo(
     () => clubs.filter((c) => c.category === "Finance" || c.category === "Investing").slice(0, 3),
@@ -102,148 +67,51 @@ export default function CampusPage() {
     <div>
       <PageHeader
         title="Campus"
-        subtitle="Everything happening around money on campus, events, competitions, mentors, and the feed."
-        action={
-          hydrated && rsvps.length > 0 ? (
-            <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springSoft}>
-              <Pill tone="capital" className="glow-ring px-3 py-1">
-                <CalendarDays className="h-3.5 w-3.5" />
-                {rsvps.length} RSVP{rsvps.length === 1 ? "" : "s"}
-              </Pill>
-            </motion.div>
-          ) : undefined
-        }
+        subtitle="Your money-learning network. Questions, wins, and what students are figuring out together."
       />
 
-      {/* Tab switcher, animated active pill */}
-      <div className="-mx-1 mb-2 overflow-x-auto px-1 pb-1">
-        <div className="inline-flex gap-1 rounded-2xl border border-white/10 bg-white/[0.03] p-1 backdrop-blur">
-          {TABS.map((t) => {
-            const isActive = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                aria-pressed={isActive}
-                className={cn(
-                  "relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition-colors",
-                  isActive ? "text-ink-950" : "text-white/55 hover:text-white",
-                )}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="campus-tab-pill"
-                    transition={springSoft}
-                    className="absolute inset-0 rounded-xl bg-capital-gradient shadow-glow"
-                  />
-                )}
-                <span className="relative z-10 inline-flex items-center gap-1.5">
-                  {t.icon}
-                  {t.label}
-                </span>
-              </button>
-            );
-          })}
+      <CampusFeed />
+
+      <section className="mt-12">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-capital-300" />
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white/60">
+              Find your crew
+            </h2>
+          </div>
+          <Button variant="ghost" size="sm" href="/clubs">
+            All clubs
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
         </div>
-      </div>
-
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.p
-          key={`blurb-${tab}`}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.2 }}
-          className="mb-6 max-w-2xl text-sm text-white/50"
-        >
-          {TAB_BLURB[tab]}
-        </motion.p>
-      </AnimatePresence>
-
-      <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.25 }}
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-40px" }}
+          className="grid grid-cols-1 gap-5 lg:grid-cols-2"
         >
-          {tab === "feed" ? (
-            <CampusFeed />
-          ) : (
-            <div className="space-y-10">
-              {visibleEvents.length > 0 ? (
-                <motion.div
-                  variants={staggerContainer}
-                  initial="hidden"
-                  animate="show"
-                  className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
-                >
-                  {visibleEvents.map((event) => (
-                    <motion.div key={event.id} variants={fadeUp} className="h-full">
-                      <CampusEventCard event={event} />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              ) : (
-                <EmptyState
-                  icon={<CalendarDays className="h-7 w-7" />}
-                  title="Nothing here yet"
-                  description="New campus happenings land here as organizers post them. Check another tab in the meantime."
-                  action={
-                    <Button variant="outline" size="sm" onClick={() => setTab("events")}>
-                      Browse events
-                    </Button>
-                  }
-                />
-              )}
-
-              {/* Club previews */}
-              <section>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-capital-300" />
-                    <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white/60">
-                      Find your crew
-                    </h2>
-                  </div>
-                  <Button variant="ghost" size="sm" href="/clubs">
-                    All clubs
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <motion.div
-                  variants={staggerContainer}
-                  initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true, margin: "-40px" }}
-                  className="grid grid-cols-1 gap-5 lg:grid-cols-2"
-                >
-                  <motion.div variants={fadeUp}>
-                    <ClubPreviewCard
-                      title="Finance clubs"
-                      subtitle="Investing, wealth-building, and market crews"
-                      icon={<LineChart className="h-4 w-4" />}
-                      list={financeClubs}
-                      memberClubs={profile.clubs}
-                    />
-                  </motion.div>
-                  <motion.div variants={fadeUp}>
-                    <ClubPreviewCard
-                      title="Startup clubs"
-                      subtitle="Founders, casers, and builders"
-                      icon={<Rocket className="h-4 w-4" />}
-                      list={startupClubs}
-                      memberClubs={profile.clubs}
-                    />
-                  </motion.div>
-                </motion.div>
-              </section>
-            </div>
-          )}
+          <motion.div variants={fadeUp}>
+            <ClubPreviewCard
+              title="Finance clubs"
+              subtitle="Investing, wealth-building, and market crews"
+              icon={<LineChart className="h-4 w-4" />}
+              list={financeClubs}
+              memberClubs={profile.clubs}
+            />
+          </motion.div>
+          <motion.div variants={fadeUp}>
+            <ClubPreviewCard
+              title="Startup clubs"
+              subtitle="Founders, casers, and builders"
+              icon={<Rocket className="h-4 w-4" />}
+              list={startupClubs}
+              memberClubs={profile.clubs}
+            />
+          </motion.div>
         </motion.div>
-      </AnimatePresence>
+      </section>
     </div>
   );
 }
@@ -321,39 +189,70 @@ type FeedFilter = "My Campus" | "Following" | "National" | "Clubs";
 const FEED_FILTERS: FeedFilter[] = ["My Campus", "Following", "National", "Clubs"];
 
 function CampusFeed() {
-  const { profile } = useAppState();
+  const { profile, emailVerified } = useAppState();
   const [filter, setFilter] = useState<FeedFilter>("My Campus");
   const [feed, setFeed] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [suggestions, setSuggestions] = useState<LeaderProfile[]>([]);
   const [following, setFollowing] = useState<string[]>([]);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   const me: FeedAuthor = useMemo(
-    () => ({ id: profile.id, name: profile.fullName, avatarColor: profile.avatarColor, schoolId: profile.schoolId }),
-    [profile.id, profile.fullName, profile.avatarColor, profile.schoolId],
+    () => ({ id: profile.id, name: profile.fullName, avatarColor: profile.avatarColor, avatarUrl: profile.avatarUrl, schoolId: profile.schoolId }),
+    [profile.id, profile.fullName, profile.avatarColor, profile.avatarUrl, profile.schoolId],
+  );
+
+  // You can only post into a club you actually belong to.
+  const myClubs = useMemo(
+    () => clubs.filter((c) => profile.clubs.includes(c.id)),
+    [profile.clubs],
   );
 
   useEffect(() => {
     let alive = true;
-    Promise.all([getFeed(), getStudentLeaders()]).then(([posts, leaders]) => {
-      if (!alive) return;
-      setFeed(posts);
-      // Only suggest real students, never seeded demo people.
-      setSuggestions(socialIsReal ? leaders.filter((p) => p.id !== profile.id).slice(0, 4) : []);
-      setLoading(false);
-    });
+    // `following` used to be useState([]) that nothing ever hydrated, so the
+    // Follow button reset on every unmount and the Following tab could never
+    // show anything. It's now loaded from (and written to) the follows table.
+    Promise.all([getFeed(), getStudentLeaders(), getFollowing()]).then(
+      ([posts, leaders, followed]) => {
+        if (!alive) return;
+        setFeed(posts);
+        setFollowing(followed);
+        // Only suggest real students, never seeded demo people.
+        setSuggestions(socialIsReal ? leaders.filter((p) => p.id !== profile.id).slice(0, 4) : []);
+        setLoading(false);
+      },
+    );
     return () => {
       alive = false;
     };
   }, [profile.id]);
 
-  async function handlePost(body: string, category: PostCategory) {
-    const created = await createPost({ body, category, author: me });
+  async function handleFollow(targetId: string) {
+    const wasFollowing = following.includes(targetId);
+    setFollowing((prev) =>
+      wasFollowing ? prev.filter((id) => id !== targetId) : [...prev, targetId],
+    );
+    const err = wasFollowing ? await unfollowUser(targetId) : await followUser(targetId);
+    if (err) {
+      // Roll back rather than leave a button showing a state the server rejected.
+      setFollowing((prev) =>
+        wasFollowing ? [...prev, targetId] : prev.filter((id) => id !== targetId),
+      );
+      setFollowError(err);
+    }
+  }
+
+  // `clubId` was never plumbed through here, so every post saved with
+  // club_id = NULL and club feeds (which filter on it) were empty by
+  // construction. The composer now passes the chosen club.
+  async function handlePost(body: string, category: PostCategory, clubId: string | null) {
+    const created = await createPost({ body, category, clubId, author: me });
     if (created) {
       setFeed((f) => [created, ...f]);
       track("post_created", { category });
+      setFilter(clubId ? "Clubs" : "My Campus");
     }
-    setFilter("My Campus");
   }
 
   function handleLike(post: FeedPost) {
@@ -423,7 +322,11 @@ function CampusFeed() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-5">
-          <PostComposer onPost={handlePost} />
+          <PostComposer
+            onPost={handlePost}
+            clubs={myClubs}
+            canPost={emailVerified}
+          />
 
           {loading ? (
             <>
@@ -436,7 +339,7 @@ function CampusFeed() {
                 <motion.div key={post.id} variants={fadeUp}>
                   <PostCard
                     post={post}
-                    currentUser={{ name: profile.fullName, avatarColor: profile.avatarColor }}
+                    currentUser={{ name: profile.fullName, avatarColor: profile.avatarColor, avatarUrl: profile.avatarUrl }}
                     onLike={() => handleLike(post)}
                     onComment={(body) => handleComment(post, body)}
                   />
@@ -461,7 +364,12 @@ function CampusFeed() {
                   const isFollowing = following.includes(person.id);
                   return (
                     <li key={person.id} className="flex items-center gap-3">
-                      <Avatar name={person.fullName} gradient={person.avatarColor} size="sm" />
+                      <Avatar
+                        name={person.fullName}
+                        gradient={person.avatarColor}
+                        src={person.avatarUrl}
+                        size="sm"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-white">{person.fullName}</p>
                         <p className="truncate text-xs text-white/45">
@@ -472,11 +380,7 @@ function CampusFeed() {
                       <Button
                         size="sm"
                         variant={isFollowing ? "secondary" : "outline"}
-                        onClick={() =>
-                          setFollowing((prev) =>
-                            isFollowing ? prev.filter((id) => id !== person.id) : [...prev, person.id],
-                          )
-                        }
+                        onClick={() => void handleFollow(person.id)}
                       >
                         {isFollowing ? "Following" : "Follow"}
                       </Button>
@@ -484,6 +388,11 @@ function CampusFeed() {
                   );
                 })}
               </ul>
+              {followError && (
+                <p role="alert" className="mt-3 text-xs text-rose-300">
+                  {followError}
+                </p>
+              )}
             </Card>
           )}
 

@@ -1,10 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, HeartCrack, Lightbulb, Sparkles, X } from "lucide-react";
+import {
+  ArrowRight,
+  GraduationCap,
+  HeartCrack,
+  Lightbulb,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import { Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -33,8 +40,14 @@ export default function LessonPlayerPage({
     [cards],
   );
 
-  const { hearts, recordAnswer, completeLesson, profile } = useAppState();
+  const { hearts, maxHearts, nextHeartAt, recordAnswer, completeLesson, profile } =
+    useAppState();
+  const router = useRouter();
 
+  // Practice mode: replay a lesson with no hearts at stake and no XP awarded.
+  // It's the way back in when you're at zero, and the way to drill a lesson you
+  // scraped through, without the quiz turning into a guessing game.
+  const [practice, setPractice] = useState(false);
   const [index, setIndex] = useState(0);
   const [answered, setAnswered] = useState(false); // current question resolved?
   const [correctCount, setCorrectCount] = useState(0);
@@ -49,7 +62,7 @@ export default function LessonPlayerPage({
 
   const card = cards[index];
   const isLast = index >= cards.length - 1;
-  const dead = hearts <= 0 && !reward; // ran out mid-lesson
+  const dead = hearts <= 0 && !reward && !practice; // ran out mid-lesson
   const progressPct = reward
     ? 100
     : Math.round((index / Math.max(1, cards.length)) * 100);
@@ -57,6 +70,12 @@ export default function LessonPlayerPage({
   function finish() {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    // A practice run is not a completion: it must not award XP, badges, or
+    // count toward the course. Send the learner back to the path instead.
+    if (practice) {
+      router.push("/learn");
+      return;
+    }
     const r = completeLesson(lesson!.id);
     setReward(r);
     if (r.newBadgeIds.length > 0) setNewBadgeId(r.newBadgeIds[0]);
@@ -80,20 +99,22 @@ export default function LessonPlayerPage({
       // Combo bonus: +2 XP per streak step past the first, capped at +10.
       const bonus = Math.min(10, Math.max(0, nextCombo - 1) * 2);
       const gained = base + bonus;
-      recordAnswer(true, gained);
+      recordAnswer(true, gained, { practice });
       setCombo(nextCombo);
       setCorrectCount((n) => n + 1);
-      setQuestionXp((x) => x + gained);
-      popId.current += 1;
-      setPop({ id: popId.current, amount: gained });
+      if (!practice) {
+        setQuestionXp((x) => x + gained);
+        popId.current += 1;
+        setPop({ id: popId.current, amount: gained });
+      }
     } else {
-      recordAnswer(false, base);
+      recordAnswer(false, base, { practice });
       setCombo(0);
       setShake((s) => s + 1);
     }
   }
 
-  function retry() {
+  function reset() {
     finishedRef.current = false;
     setReward(null);
     setNewBadgeId(null);
@@ -103,6 +124,15 @@ export default function LessonPlayerPage({
     setQuestionXp(0);
     setCombo(0);
     setPop(null);
+  }
+
+  function retry() {
+    reset();
+  }
+
+  function startPractice() {
+    setPractice(true);
+    reset();
   }
 
   // ── Completion ──────────────────────────────────────────────────────────
@@ -132,10 +162,13 @@ export default function LessonPlayerPage({
   }
 
   // ── Out of hearts ───────────────────────────────────────────────────────
+  // "Try from the top" used to live here and reset every bit of lesson state
+  // *except* hearts, so this same screen re-rendered instantly. There is now
+  // always a real way forward: wait out the countdown, or practice for free.
   if (dead) {
     return (
       <div className="mx-auto max-w-xl">
-        <TopBar progressPct={progressPct} hearts={0} maxHearts={profile.maxHearts ?? 5} />
+        <TopBar progressPct={progressPct} hearts={0} maxHearts={maxHearts} />
         <div className="mt-10 flex flex-col items-center gap-4 rounded-3xl border border-rose-500/25 bg-rose-500/[0.06] p-8 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/15 text-rose-400">
             <HeartCrack className="h-8 w-8" aria-hidden />
@@ -144,17 +177,22 @@ export default function LessonPlayerPage({
             Out of hearts
           </h1>
           <p className="max-w-sm text-sm leading-relaxed text-white/60">
-            You ran out of hearts, so this attempt didn&apos;t finish. Your hearts
-            refill tomorrow, come back and run it again to lock in the XP.
+            This attempt didn&apos;t finish. Hearts come back on their own, or you
+            can practice this lesson right now with nothing at stake.
           </p>
+          <HeartCountdown at={nextHeartAt} />
           <div className="mt-1 flex flex-col gap-2.5 sm:flex-row">
-            <Button href="/learn" size="lg">
+            <Button size="lg" onClick={startPractice}>
+              <GraduationCap className="h-4 w-4" />
+              Practice for free
+            </Button>
+            <Button variant="outline" size="lg" href="/learn">
               Back to path
             </Button>
-            <Button variant="outline" size="lg" onClick={retry}>
-              Try from the top
-            </Button>
           </div>
+          <p className="text-xs text-white/35">
+            Practice runs don&apos;t cost hearts and don&apos;t earn XP.
+          </p>
         </div>
       </div>
     );
@@ -163,7 +201,14 @@ export default function LessonPlayerPage({
   // ── Playing ─────────────────────────────────────────────────────────────
   return (
     <div className="mx-auto max-w-xl">
-      <TopBar progressPct={progressPct} hearts={hearts} maxHearts={profile.maxHearts ?? 5} />
+      <TopBar progressPct={progressPct} hearts={hearts} maxHearts={maxHearts} />
+
+      {practice && (
+        <div className="mt-3 flex items-center justify-center gap-2 rounded-full border border-sky-400/25 bg-sky-400/[0.07] px-3 py-1.5 text-xs font-semibold text-sky-200">
+          <GraduationCap className="h-3.5 w-3.5" aria-hidden />
+          Practice run — no hearts at stake, no XP earned
+        </div>
+      )}
 
       <div className="mt-3 flex min-h-[26px] items-center justify-center">
         <ComboMeter combo={combo} />
@@ -233,6 +278,35 @@ export default function LessonPlayerPage({
         </div>
       </motion.div>
     </div>
+  );
+}
+
+/** Live "next heart in mm:ss" ticker. The store reconciles the actual refill. */
+function HeartCountdown({ at }: { at: number | null }) {
+  const [remaining, setRemaining] = useState(() =>
+    at ? Math.max(0, at - Date.now()) : 0,
+  );
+
+  useEffect(() => {
+    if (!at) return;
+    setRemaining(Math.max(0, at - Date.now()));
+    const id = setInterval(() => setRemaining(Math.max(0, at - Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [at]);
+
+  if (!at) return null;
+
+  const total = Math.ceil(remaining / 1000);
+  const mm = String(Math.floor(total / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
+
+  return (
+    <p className="text-sm text-white/50">
+      Next heart in{" "}
+      <span className="font-mono font-semibold tabular-nums text-white/80">
+        {mm}:{ss}
+      </span>
+    </p>
   );
 }
 

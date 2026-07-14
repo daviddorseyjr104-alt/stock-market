@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -8,21 +8,30 @@ import {
   User,
   Mail,
   Lock,
+  AtSign,
   ArrowRight,
   ArrowLeft,
   Check,
   Loader2,
-  GraduationCap,
+  MailCheck,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { AvatarPicker } from "@/components/profile/AvatarPicker";
 import { schools } from "@/lib/data/schools";
-import { clubs } from "@/lib/data/clubs";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useAppState } from "@/lib/store";
 import { track } from "@/lib/analytics";
+import {
+  checkUsername,
+  normalizeUsername,
+  suggestUsername,
+  validateUsername,
+  type UsernameStatus,
+} from "@/lib/username";
 import type { Goal, Interest, InvestingLevel, StudentType } from "@/lib/types";
 
 const studentTypes: StudentType[] = [
@@ -86,6 +95,8 @@ function Chip({
   );
 }
 
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 function SignupInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -94,9 +105,14 @@ function SignupInner() {
   const [step, setStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   // form state
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [nameStatus, setNameStatus] = useState<UsernameStatus>({ state: "idle" });
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [schoolId, setSchoolId] = useState(schools[0].id);
@@ -105,45 +121,107 @@ function SignupInner() {
   const [studentType, setStudentType] = useState<StudentType>("sophomore");
   const [level, setLevel] = useState<InvestingLevel>("beginner");
   const [goal, setGoal] = useState<Goal>("Learn basics");
-  const [club, setClub] = useState<string | null>(null);
   const [picked, setPicked] = useState<Interest[]>([]);
+
+  // Offer a handle derived from their name, but only until they take control of
+  // the field — otherwise typing a name would overwrite a username they chose.
+  const suggested = usernameTouched ? username : suggestUsername(fullName);
+
+  useEffect(() => {
+    const name = suggested;
+    if (!name) {
+      setNameStatus({ state: "idle" });
+      return;
+    }
+    const invalid = validateUsername(name);
+    if (invalid) {
+      setNameStatus({ state: "invalid", message: invalid });
+      return;
+    }
+    setNameStatus({ state: "checking" });
+    // Debounce so we aren't querying on every keystroke.
+    const id = setTimeout(() => {
+      checkUsername(name).then(setNameStatus);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [suggested]);
 
   const toggleInterest = (i: Interest) =>
     setPicked((prev) =>
       prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i],
     );
 
+  const emailValid = EMAIL_SHAPE.test(email.trim());
+
   const canNext =
     step === 1
-      ? fullName.trim() && email.trim() && password.length >= 6
+      ? Boolean(
+          fullName.trim() &&
+            emailValid &&
+            password.length >= 6 &&
+            nameStatus.state === "available",
+        )
       : step === 2
-        ? major.trim()
+        ? Boolean(major.trim())
         : picked.length >= 1;
 
   async function finish() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    if (supabase) {
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName, school_id: schoolId } },
-      });
-      // Surface real problems (weak password, email already registered, schema
-      // not applied) instead of silently dropping the user into a local session.
-      if (authError) {
-        setError(authError.message);
-        setLoading(false);
-        return;
-      }
-    } else {
+
+    if (!supabase) {
       await new Promise((r) => setTimeout(r, 800));
+      signUp({
+        fullName,
+        username: suggested,
+        avatarUrl,
+        email,
+        schoolId,
+        major,
+        gradYear,
+        studentType,
+        investingLevel: level,
+        goal,
+        interests: picked,
+      });
+      track("signup_completed", { school: schoolId, level });
+      router.push("/dashboard");
+      return;
     }
-    // Write the real, per-user profile from everything onboarding collected.
+
+    const { data, error: authError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        // Without this, Supabase never sends a confirmation link at all.
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: { full_name: fullName, username: suggested, school_id: schoolId },
+      },
+    });
+
+    if (authError) {
+      setError(authError.message);
+      setLoading(false);
+      return;
+    }
+
+    // With email confirmation on, Supabase returns a user but NO session. The
+    // old code pushed to /dashboard anyway, so unverified accounts walked
+    // straight in. Hold them here until they click the link instead.
+    if (!data.session) {
+      setSentTo(email.trim());
+      setLoading(false);
+      return;
+    }
+
     signUp({
+      id: data.user?.id,
       fullName,
-      email,
+      username: suggested,
+      avatarUrl,
+      email: email.trim(),
+      emailVerified: Boolean(data.user?.email_confirmed_at),
       schoolId,
       major,
       gradYear,
@@ -151,11 +229,12 @@ function SignupInner() {
       investingLevel: level,
       goal,
       interests: picked,
-      clubId: club,
     });
     track("signup_completed", { school: schoolId, level });
     router.push("/dashboard");
   }
+
+  if (sentTo) return <CheckYourEmail email={sentTo} />;
 
   return (
     <div>
@@ -212,9 +291,69 @@ function SignupInner() {
               <p className="mt-2 text-white/55">
                 Start learning the market through your real student life.
               </p>
-              <div className="mt-7 space-y-4">
+              <div className="mt-7 space-y-5">
+                <div>
+                  <Label>Profile picture</Label>
+                  <AvatarPicker
+                    value={avatarUrl}
+                    onChange={setAvatarUrl}
+                    fallback={(fullName.trim()[0] ?? "?").toUpperCase()}
+                  />
+                </div>
+
                 <Input icon={<User className="h-4 w-4" />} label="Full name" value={fullName} onChange={setFullName} placeholder="Davon Carter" />
+
+                <div>
+                  <Label>Username</Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40">
+                      <AtSign className="h-4 w-4" />
+                    </span>
+                    <input
+                      value={suggested}
+                      onChange={(e) => {
+                        setUsernameTouched(true);
+                        setUsername(normalizeUsername(e.target.value));
+                      }}
+                      placeholder="davon_c"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      aria-invalid={nameStatus.state === "invalid" || nameStatus.state === "taken"}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] py-3 pl-10 pr-10 text-sm text-white placeholder:text-white/25 focus:border-capital-400/50 focus:outline-none"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                      {nameStatus.state === "checking" && (
+                        <Loader2 className="h-4 w-4 animate-spin text-white/40" aria-hidden />
+                      )}
+                      {nameStatus.state === "available" && (
+                        <Check className="h-4 w-4 text-capital-300" aria-hidden />
+                      )}
+                      {(nameStatus.state === "taken" || nameStatus.state === "invalid") && (
+                        <X className="h-4 w-4 text-rose-400" aria-hidden />
+                      )}
+                    </span>
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-1.5 text-xs",
+                      nameStatus.state === "taken" || nameStatus.state === "invalid"
+                        ? "text-rose-400"
+                        : "text-white/35",
+                    )}
+                  >
+                    {nameStatus.state === "taken" || nameStatus.state === "invalid"
+                      ? nameStatus.message
+                      : "This is how you'll show up on the feed and leaderboards."}
+                  </p>
+                </div>
+
                 <Input icon={<Mail className="h-4 w-4" />} label="Email" type="email" value={email} onChange={setEmail} placeholder="you@school.edu" />
+                {email.trim() && !emailValid && (
+                  <p className="-mt-2.5 text-xs text-rose-400">
+                    That doesn&apos;t look like a valid email address.
+                  </p>
+                )}
                 <Input icon={<Lock className="h-4 w-4" />} label="Password" type="password" value={password} onChange={setPassword} placeholder="At least 6 characters" />
               </div>
             </div>
@@ -289,40 +428,13 @@ function SignupInner() {
           {step === 3 && (
             <div>
               <h1 className="font-display text-3xl font-bold tracking-tight text-white">
-                Join your community
+                What do you want to learn?
               </h1>
               <p className="mt-2 text-white/55">
-                Pick a club to start with and the topics you care about.
+                We&apos;ll order your path around the topics you pick.
               </p>
 
               <div className="mt-6">
-                <Label>
-                  <GraduationCap className="mr-1 inline h-3.5 w-3.5" /> Campus community
-                </Label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {clubs.slice(0, 4).map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setClub(club === c.id ? null : c.id)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-all",
-                        club === c.id
-                          ? "border-capital-400/50 bg-capital-400/10"
-                          : "border-white/10 bg-white/[0.02] hover:border-white/20",
-                      )}
-                    >
-                      <span className="text-xl">{c.emoji}</span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-white">{c.name}</span>
-                        <span className="block truncate text-xs text-white/45">{c.tagline}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5">
                 <Label>
                   <Sparkles className="mr-1 inline h-3.5 w-3.5" /> Interests
                   <span className="ml-1 text-white/35">(pick at least 1)</span>
@@ -333,6 +445,12 @@ function SignupInner() {
                   ))}
                 </div>
               </div>
+
+              <p className="mt-6 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-xs leading-relaxed text-white/45">
+                Clubs are opt-in once your email is confirmed — join them from the
+                Clubs tab. Membership shows other students you&apos;re a real
+                person, so we don&apos;t hand it out at signup.
+              </p>
             </div>
           )}
         </motion.div>
@@ -381,6 +499,74 @@ function SignupInner() {
           Log in
         </Link>
       </p>
+    </div>
+  );
+}
+
+/**
+ * Terminal state for a signup that created a user but no session, i.e. Supabase
+ * is waiting on the confirmation link. The account genuinely does not work until
+ * the link is clicked, so there is deliberately no "skip" out of this screen.
+ */
+function CheckYourEmail({ email }: { email: string }) {
+  const [resent, setResent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resend() {
+    const supabase = createClient();
+    if (!supabase) return;
+    setBusy(true);
+    setError(null);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    setBusy(false);
+    if (resendError) setError(resendError.message);
+    else setResent(true);
+  }
+
+  return (
+    <div className="text-center">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-capital-400/12 text-capital-300">
+        <MailCheck className="h-8 w-8" aria-hidden />
+      </div>
+      <h1 className="mt-5 font-display text-3xl font-bold tracking-tight text-white">
+        Confirm your email
+      </h1>
+      <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-white/55">
+        We sent a link to{" "}
+        <strong className="font-semibold text-white">{email}</strong>. Click it to
+        activate your account, then come back and log in.
+      </p>
+
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-rose-400">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-7 flex flex-col items-center gap-3">
+        <Button href="/login" size="lg" className="w-full">
+          Back to log in
+        </Button>
+        {resent ? (
+          <p className="text-xs text-white/40">
+            Sent again — check your spam folder if it&apos;s not there.
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={resend}
+            disabled={busy}
+            className="text-sm font-semibold text-capital-300 hover:underline disabled:opacity-50"
+          >
+            {busy ? "Sending..." : "Resend the link"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

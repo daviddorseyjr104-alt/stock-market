@@ -33,7 +33,6 @@ import { schoolById } from "@/lib/data/schools";
 import { badges, badgeById } from "@/lib/data/badges";
 import { clubById } from "@/lib/data/clubs";
 import { courseById, courseLessonById, courses } from "@/lib/data/courses";
-import { lessonById } from "@/lib/data/lessons";
 import type { Badge } from "@/lib/types";
 import { useAppState, levelForXp } from "@/lib/store";
 import { cn, timeAgo } from "@/lib/utils";
@@ -65,23 +64,20 @@ export default function ProfilePage() {
   const level = levelForXp(profile.xp);
   const earnedIds = useMemo(() => new Set(profile.badges), [profile.badges]);
 
-  // Completed lessons grouped by course (course engine lessons), plus any
-  // legacy-path lessons the user finished.
-  const { byCourse, legacyLessons } = useMemo(() => {
+  // Completed lessons grouped by course. Ids from the retired curriculum may
+  // still sit in `completedLessons` for long-standing accounts; they simply
+  // don't resolve to a course any more and are skipped here. Their XP is
+  // already banked in `profile.xp`, so nothing is lost.
+  const byCourse = useMemo(() => {
     const map = new Map<string, { title: string; xp: number }[]>();
-    const legacy: { id: string; title: string; xp: number }[] = [];
     for (const id of profile.completedLessons) {
       const cl = courseLessonById(id);
-      if (cl) {
-        const list = map.get(cl.courseId) ?? [];
-        list.push({ title: cl.title, xp: cl.xp });
-        map.set(cl.courseId, list);
-        continue;
-      }
-      const legacyLesson = lessonById(id);
-      if (legacyLesson) legacy.push({ id, title: legacyLesson.title, xp: legacyLesson.xp });
+      if (!cl) continue;
+      const list = map.get(cl.courseId) ?? [];
+      list.push({ title: cl.title, xp: cl.xp });
+      map.set(cl.courseId, list);
     }
-    return { byCourse: map, legacyLessons: legacy };
+    return map;
   }, [profile.completedLessons]);
 
   const userClubs = useMemo(
@@ -119,6 +115,7 @@ export default function ProfilePage() {
                 <Avatar
                   name={profile.fullName}
                   gradient={profile.avatarColor}
+                  src={profile.avatarUrl}
                   size="xl"
                   className="shadow-float"
                 />
@@ -260,26 +257,6 @@ export default function ProfilePage() {
                     </div>
                   );
                 })}
-                {legacyLessons.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-white">Other lessons</p>
-                    <div className="space-y-1 pl-1">
-                      {legacyLessons.map((l) => (
-                        <Link
-                          key={l.id}
-                          href={`/learn/${l.id}`}
-                          className="flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-white/[0.02]"
-                        >
-                          <span className="inline-flex min-w-0 items-center gap-2">
-                            <Check className="h-3.5 w-3.5 shrink-0 text-capital-300" strokeWidth={3} />
-                            <span className="truncate text-sm text-white/75">{l.title}</span>
-                          </span>
-                          <span className="shrink-0 text-xs text-white/40">+{l.xp} XP</span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </Card>

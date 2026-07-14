@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import * as Icons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Flame, Lock } from "lucide-react";
@@ -20,10 +21,17 @@ function iconFor(name: string): LucideIcon {
 
 const ordered = [...courses].sort((a, b) => a.order - b.order);
 
-export default function LearnPage() {
+function LearnPageInner() {
   const { hydrated, profile, hearts, isCourseUnlocked, isLessonComplete } =
     useAppState();
-  const [picked, setPicked] = useState<string | null>(null);
+  // The skill tree deep-links here as /learn?course=<id>. That param used to be
+  // read by nobody, so every "open this course" link silently dumped you on the
+  // default course instead.
+  const params = useSearchParams();
+  const requested = params.get("course");
+  const [picked, setPicked] = useState<string | null>(
+    requested && ordered.some((c) => c.id === requested) ? requested : null,
+  );
 
   // Per-course progress from real completion state.
   const progressById = useMemo(() => {
@@ -236,5 +244,13 @@ function LearnSkeleton() {
       <div className="skeleton h-24 w-full rounded-3xl" />
       <div className="skeleton h-28 w-full rounded-3xl" />
     </div>
+  );
+}
+
+export default function LearnPage() {
+  return (
+    <Suspense fallback={null}>
+      <LearnPageInner />
+    </Suspense>
   );
 }

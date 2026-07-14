@@ -48,6 +48,16 @@ export const moneyBasicsCourse: Course = {
                 "Think of needs as the floor of a house and wants as the furniture, you can't skip the floor, but you get to choose how much furniture fits your budget.",
             },
             {
+              // Income and expense are tested in the match below but were never
+              // defined; everyday words still deserve one line before the quiz.
+              kind: "teach",
+              id: "money-basics-u1-l1-t3",
+              title: "Money in, money out",
+              body: "Income is money coming in: a paycheck, a stipend, financial aid refunds, money from home. An expense is money going out: rent, food, subscriptions, that boba. Every need and every want you have is an expense. The gap between your income and your expenses is the only money you'll ever get to save or invest.",
+              example:
+                "A $900/month campus job is income. Rent, groceries, and Spotify are expenses. If they total $740, your gap is $160, that's what's actually available to you.",
+            },
+            {
               kind: "question",
               id: "money-basics-u1-l1-qm",
               type: "match",

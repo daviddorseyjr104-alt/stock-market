@@ -12,35 +12,78 @@ import { track } from "@/lib/analytics";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loginAsDemo } = useAppState();
+  const { loginAsDemo, beginSession } = useAppState();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setUnverified(false);
     setLoading(true);
 
     const supabase = createClient();
-    if (supabase) {
-      // Try real Supabase auth. If it fails (e.g. no account yet, or the
-      // database schema isn't applied), don't dead-end the user, fall through
-      // to the explorable demo session. New accounts are created via /signup.
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error && !/invalid login credentials|email not confirmed/i.test(error.message)) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-    } else {
-      // Demo mode, no Supabase configured. Continue to the product.
+
+    // Keyless demo build: there is no account to authenticate against, so hand
+    // the visitor a local session. This branch never runs with Supabase live.
+    if (!supabase) {
       await new Promise((r) => setTimeout(r, 650));
+      loginAsDemo();
+      track("login_demo");
+      router.push("/dashboard");
+      return;
     }
-    loginAsDemo();
-    track("login_demo");
+
+    // A failed sign-in must FAIL. This used to swallow "invalid login
+    // credentials" and log the user in regardless, which let anyone into any
+    // account with any password, and then overwrote that account with a blank
+    // "Guest" profile.
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      if (/email not confirmed/i.test(authError.message)) {
+        setUnverified(true);
+      } else if (/invalid login credentials/i.test(authError.message)) {
+        setError("That email and password don't match an account.");
+      } else {
+        setError(authError.message);
+      }
+      setLoading(false);
+      return;
+    }
+
+    if (!data.user?.email_confirmed_at) {
+      await supabase.auth.signOut();
+      setUnverified(true);
+      setLoading(false);
+      return;
+    }
+
+    // Session is real: rebuild state from the backend rather than resetting it.
+    await beginSession();
+    track("login");
     router.push("/dashboard");
+  }
+
+  async function resendVerification() {
+    const supabase = createClient();
+    if (!supabase || !email) return;
+    setLoading(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    setLoading(false);
+    if (resendError) setError(resendError.message);
+    else setResent(true);
   }
 
   return (
@@ -79,9 +122,37 @@ export default function LoginPage() {
         />
 
         {error && (
-          <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
+          <p
+            role="alert"
+            className="rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-400"
+          >
             {error}
           </p>
+        )}
+
+        {unverified && (
+          <div
+            role="alert"
+            className="space-y-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2.5 text-sm text-amber-200"
+          >
+            <p>
+              <strong className="font-semibold">Confirm your email first.</strong>{" "}
+              We sent a link to {email}. Click it to activate your account.
+            </p>
+            {resent ? (
+              <p className="text-xs text-amber-200/70">
+                Sent again — check your inbox and spam folder.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={resendVerification}
+                className="text-xs font-semibold text-amber-100 underline underline-offset-2 hover:text-white"
+              >
+                Resend the link
+              </button>
+            )}
+          </div>
         )}
 
         <div className="flex items-center justify-between text-sm">

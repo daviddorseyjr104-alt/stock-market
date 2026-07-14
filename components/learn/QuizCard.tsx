@@ -17,7 +17,8 @@ function correctAnswerLabel(q: Question): string | null {
   if (q.type === "mcq" || q.type === "scenario")
     return q.options?.[q.correctIndex ?? -1] ?? null;
   if (q.type === "fill-in") return q.accept?.[0] ?? null;
-  return null; // "match" reveals every correct pair visually
+  // "match" has no single answer; the pairs are restated separately below.
+  return null;
 }
 
 /**
@@ -238,6 +239,18 @@ export function QuizCard({
                 Correct answer:{" "}
                 <span className="text-capital-300">{correctAnswerLabel(question)}</span>
               </p>
+            )}
+            {/* A missed match resolves only once every pair is right, so the
+                board alone just proves you brute-forced it. Restate the pairs. */}
+            {!wasCorrect && question.type === "match" && question.pairs && (
+              <dl className="mt-2 space-y-1.5">
+                {question.pairs.map((pair) => (
+                  <div key={pair.left} className="flex flex-wrap gap-x-1.5 text-sm">
+                    <dt className="font-semibold text-capital-300">{pair.left}</dt>
+                    <dd className="text-white/75">— {pair.right}</dd>
+                  </div>
+                ))}
+              </dl>
             )}
             <p className="mt-1.5 text-sm leading-relaxed text-white/75">
               {question.explanation}

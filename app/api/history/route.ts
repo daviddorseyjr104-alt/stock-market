@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardApi } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ const RANGE_MAP: Record<string, { r: string; i: string }> = {
 
 const cache = new Map<string, { rows: Bar[]; at: number }>();
 const TTL_MS = 10 * 60 * 1000;
+/** Keyed by caller-supplied symbols; cap it so it can't grow without bound. */
+const CACHE_MAX = 400;
 
 async function fetchYahoo(symbol: string, r: string, i: string): Promise<Bar[]> {
   const key = `${symbol.toUpperCase()}:${r}:${i}`;
@@ -50,6 +53,10 @@ async function fetchYahoo(symbol: string, r: string, i: string): Promise<Bar[]> 
       last = close;
       rows.push({ t: ts[k] * 1000, c: Math.round(close * 100) / 100 });
     }
+    if (cache.size >= CACHE_MAX) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
     cache.set(key, { rows, at: Date.now() });
     return rows;
   } catch {
@@ -59,6 +66,9 @@ async function fetchYahoo(symbol: string, r: string, i: string): Promise<Bar[]> 
 
 // GET /api/history?symbols=AAPL,VTI&range=1M
 export async function GET(req: Request) {
+  const denied = await guardApi({ route: "history", limit: 30 });
+  if (denied) return denied;
+
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") ?? "")
     .split(",")

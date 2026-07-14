@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -14,26 +14,38 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { lessons } from "@/lib/data/lessons";
-import { people } from "@/lib/data/people";
+import { allCourseLessons, courseById } from "@/lib/data/courses";
 import { schools } from "@/lib/data/schools";
 import { clubs } from "@/lib/data/clubs";
-import { posts } from "@/lib/data/posts";
-import { personById } from "@/lib/data/people";
+import {
+  getFeed,
+  getStudentLeaders,
+  schoolShort,
+  type FeedPost,
+  type LeaderProfile,
+} from "@/lib/social";
 import { cn } from "@/lib/utils";
 
-const popularTopics = [
-  "ETFs",
-  "Roth IRA",
-  "Budgeting",
-  "Compound interest",
-  "Diversification",
-];
+// ──────────────────────────────────────────────────────────────────────────
+// Search used to index `lib/data/people` and `lib/data/posts` — the invented
+// roster (Maya Lin, Andre Diallo, …) that the leaderboards deliberately refuse
+// to show — and present them as real students with levels and majors. It also
+// indexed the OLD 23-lesson curriculum, so the 96 real lessons were unsearchable
+// and every hit sent you into a parallel lesson product.
+//
+// Everything here now comes from real sources: course lessons, and students and
+// posts from the database.
+// ──────────────────────────────────────────────────────────────────────────
 
-const suggestedLessonIds = ["etfs", "roth-ira", "compound-interest"];
+const popularTopics = ["ETFs", "Roth IRA", "Budget", "Compound", "Credit"];
+
+const suggestedLessonIds = [
+  "money-basics-u1-l1", // Needs vs. Wants
+  "investing-u1-l2", // ETFs, Index Funds & Mutual Funds
+  "investing-u3-l1", // Compound Growth
+];
 
 type ResultGroup = {
   key: string;
@@ -69,66 +81,86 @@ function ResultRow({
   );
 }
 
+function LessonIcon() {
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-capital-400/10 text-capital-300">
+      <BookOpen className="h-5 w-5" />
+    </div>
+  );
+}
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [students, setStudents] = useState<LeaderProfile[]>([]);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+
   const q = query.trim().toLowerCase();
   const hasQuery = q.length > 0;
 
+  // Real students and real posts, from the database.
+  useEffect(() => {
+    let alive = true;
+    Promise.all([getStudentLeaders(), getFeed()]).then(([people, feed]) => {
+      if (!alive) return;
+      setStudents(people);
+      setPosts(feed);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const groups = useMemo<ResultGroup[]>(() => {
     if (!hasQuery) return [];
-    const match = (...fields: string[]) =>
-      fields.some((f) => f.toLowerCase().includes(q));
-
-    const lessonHits = lessons.filter((l) => match(l.title, l.summary));
-    const peopleHits = people.filter((p) => match(p.fullName, p.major));
-    const schoolHits = schools.filter((s) => match(s.name, s.shortName));
-    const clubHits = clubs.filter((c) => match(c.name, c.tagline));
-    const postHits = posts.filter((p) => match(p.body));
+    const match = (...fields: (string | undefined)[]) =>
+      fields.some((f) => (f ?? "").toLowerCase().includes(q));
 
     const result: ResultGroup[] = [];
 
+    const lessonHits = allCourseLessons.filter((l) => match(l.title, l.summary));
     if (lessonHits.length)
       result.push({
         key: "lessons",
         label: "Lessons",
         icon: BookOpen,
-        items: lessonHits.map((l) => (
+        items: lessonHits.slice(0, 12).map((l) => (
           <ResultRow
             key={l.id}
-            href={`/learn/${l.id}`}
-            leading={
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-capital-400/10 text-capital-300">
-                <BookOpen className="h-5 w-5" />
-              </div>
-            }
+            href={`/learn/lesson/${l.id}`}
+            leading={<LessonIcon />}
             title={l.title}
-            meta={`${l.difficulty} · ${l.minutes} min · +${l.xp} XP`}
+            meta={`${courseById(l.courseId)?.title ?? "Course"} · ${l.difficulty} · +${l.xp} XP`}
           />
         )),
       });
 
-    if (peopleHits.length)
+    const studentHits = students.filter((p) => match(p.fullName, p.major));
+    if (studentHits.length)
       result.push({
         key: "people",
         label: "Students",
         icon: Users,
-        items: peopleHits.map((p) => (
+        items: studentHits.slice(0, 10).map((p) => (
           <ResultRow
             key={p.id}
-            href="/campus"
+            href="/leaderboards"
             leading={
               <Avatar
                 name={p.fullName}
                 gradient={p.avatarColor}
+                src={p.avatarUrl}
                 size="md"
               />
             }
             title={p.fullName}
-            meta={`@${p.username} · ${p.major} · Level ${p.level}`}
+            meta={[schoolShort(p.schoolId), p.major, `${p.xp.toLocaleString()} XP`]
+              .filter(Boolean)
+              .join(" · ")}
           />
         )),
       });
 
+    const schoolHits = schools.filter((s) => match(s.name, s.shortName));
     if (schoolHits.length)
       result.push({
         key: "schools",
@@ -154,6 +186,7 @@ export default function SearchPage() {
         )),
       });
 
+    const clubHits = clubs.filter((c) => match(c.name, c.tagline));
     if (clubHits.length)
       result.push({
         key: "clubs",
@@ -179,33 +212,35 @@ export default function SearchPage() {
         )),
       });
 
+    const postHits = posts.filter((p) => match(p.body));
     if (postHits.length)
       result.push({
         key: "posts",
         label: "Campus posts",
         icon: MessageSquare,
-        items: postHits.map((p) => {
-          const author = personById(p.authorId);
-          return (
-            <ResultRow
-              key={p.id}
-              href="/campus"
-              leading={
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
-                  <MessageSquare className="h-5 w-5" />
-                </div>
-              }
-              title={p.body}
-              meta={`${author?.fullName ?? "Student"} · ${p.category}`}
-            />
-          );
-        }),
+        items: postHits.slice(0, 10).map((p) => (
+          <ResultRow
+            key={p.id}
+            href="/campus"
+            leading={
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+            }
+            title={p.body}
+            meta={`${p.author.name} · ${p.category}`}
+          />
+        )),
       });
 
     return result;
-  }, [hasQuery, q]);
+  }, [hasQuery, q, students, posts]);
 
   const totalResults = groups.reduce((n, g) => n + g.items.length, 0);
+
+  const suggested = suggestedLessonIds
+    .map((id) => allCourseLessons.find((l) => l.id === id))
+    .filter((l): l is (typeof allCourseLessons)[number] => Boolean(l));
 
   return (
     <div>
@@ -229,7 +264,6 @@ export default function SearchPage() {
 
       {!hasQuery ? (
         <div className="space-y-7">
-          {/* Popular topics */}
           <Card>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/50">
               Popular topics
@@ -248,54 +282,43 @@ export default function SearchPage() {
             </div>
           </Card>
 
-          {/* Suggested lessons */}
           <Card>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/50">
               Suggested lessons
             </p>
             <div className="space-y-2.5">
-              {suggestedLessonIds
-                .map((id) => lessons.find((l) => l.id === id))
-                .filter((l): l is (typeof lessons)[number] => Boolean(l))
-                .map((l) => (
-                  <ResultRow
-                    key={l.id}
-                    href={`/learn/${l.id}`}
-                    leading={
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-capital-400/10 text-capital-300">
-                        <BookOpen className="h-5 w-5" />
-                      </div>
-                    }
-                    title={l.title}
-                    meta={`${l.difficulty} · ${l.minutes} min · +${l.xp} XP`}
-                  />
-                ))}
+              {suggested.map((l) => (
+                <ResultRow
+                  key={l.id}
+                  href={`/learn/lesson/${l.id}`}
+                  leading={<LessonIcon />}
+                  title={l.title}
+                  meta={`${courseById(l.courseId)?.title ?? "Course"} · +${l.xp} XP`}
+                />
+              ))}
             </div>
           </Card>
         </div>
       ) : totalResults === 0 ? (
         <EmptyState
           icon={<SearchX className="h-7 w-7" />}
-          title="No results"
-          description={`Nothing matched "${query}". Try a topic like ETFs, Roth IRA, or budgeting.`}
+          title={`No results for "${query}"`}
+          description="Try a lesson topic like ETFs, budgeting, or credit."
         />
       ) : (
-        <div className="space-y-7">
-          {groups.map((group) => {
-            const GroupIcon = group.icon;
-            return (
-              <section key={group.key}>
-                <div className="mb-3 flex items-center gap-2">
-                  <GroupIcon className="h-4 w-4 text-capital-300" />
-                  <h2 className="font-display text-sm font-semibold text-white">
-                    {group.label}
-                  </h2>
-                  <Pill tone="default">{group.items.length}</Pill>
-                </div>
-                <div className="space-y-2.5">{group.items}</div>
-              </section>
-            );
-          })}
+        <div className="space-y-8">
+          {groups.map((group) => (
+            <section key={group.key}>
+              <div className="mb-3 flex items-center gap-2">
+                <group.icon className="h-4 w-4 text-capital-300" />
+                <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white/60">
+                  {group.label}
+                </h2>
+                <span className="text-xs text-white/35">{group.items.length}</span>
+              </div>
+              <div className="space-y-2.5">{group.items}</div>
+            </section>
+          ))}
         </div>
       )}
     </div>
