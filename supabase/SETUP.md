@@ -11,6 +11,15 @@ In the Supabase SQL editor, run in order:
 1. `setup.sql` (schema + RLS + seed) — safe to re-run.
 2. `migrations/0003_identity_and_limits.sql` — avatars, verified-only posting
    and club membership, and the Capital Coach daily quota.
+3. `migrations/0004_portfolio_challenges_follows.sql` — non-destructive portfolio
+   writes, durable challenge payouts, and real follows.
+
+**0004 is required.** Without it: saving a portfolio can wipe your holdings (the
+old write was DELETE-then-INSERT with the errors discarded), completing a
+challenge re-awards its XP on every device, and following someone does nothing.
+It also drops two foreign keys pointing at the `lessons` table, which held the
+old curriculum that has now been removed from the app — a holding tagged with a
+course lesson id would otherwise fail that constraint on insert.
 
 ## 2. Turn ON email confirmation
 

@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Radio,
   ArrowRight,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis } from "recharts";
@@ -58,40 +59,41 @@ interface Bar {
   c: number;
 }
 
-/** Reconstruct portfolio value over time from per-symbol price history. */
-function buildPortfolioSeries(
-  history: Record<string, Bar[]>,
-  positions: { ticker: string; shares: number; avgCost: number }[],
-  cash: number,
-): { t: number; v: number }[] {
-  if (positions.length === 0) return [];
-  const tset = new Set<number>();
-  for (const p of positions) for (const b of history[p.ticker.toUpperCase()] ?? []) tset.add(b.t);
-  const times = Array.from(tset).sort((a, b) => a - b);
-  if (times.length < 2) return [];
-  const ptr: Record<string, number> = {};
-  const cur: Record<string, number> = {};
-  for (const p of positions) {
-    ptr[p.ticker.toUpperCase()] = 0;
-    cur[p.ticker.toUpperCase()] = p.avgCost;
-  }
-  return times.map((t) => {
-    let v = cash;
-    for (const p of positions) {
-      const sym = p.ticker.toUpperCase();
-      const rows = history[sym] ?? [];
-      while (ptr[sym] < rows.length && rows[ptr[sym]].t <= t) {
-        cur[sym] = rows[ptr[sym]].c;
-        ptr[sym]++;
-      }
-      v += p.shares * cur[sym];
-    }
-    return { t, v: Math.round(v * 100) / 100 };
-  });
+/**
+ * Your ACTUAL account value over time, from the equity curve the store records.
+ *
+ * This used to be `buildPortfolioSeries`, which computed, for every past
+ * timestamp, `today's cash + Σ (today's shares × that day's close)` — it never
+ * reconstructed what you actually held or how much cash you had back then. Buy
+ * $250 of NVDA five minutes ago, click "1Y", and it drew a year of NVDA's rally
+ * as if you'd held those shares the whole time, headlining a "+28.4% past year"
+ * you categorically did not earn. In an app teaching students to read returns,
+ * that is the single worst thing it could get wrong.
+ *
+ * Meanwhile `recordEquity` was already maintaining the real curve — and nothing
+ * rendered it. It does now.
+ */
+function equityInRange(points: { t: number; v: number }[], sinceMs: number | null) {
+  if (points.length === 0) return [];
+  const cutoff = sinceMs === null ? 0 : Date.now() - sinceMs;
+  const inRange = points.filter((p) => p.t >= cutoff);
+  // Keep the last point before the window so a short window still has a baseline.
+  const before = points.filter((p) => p.t < cutoff).slice(-1);
+  return [...before, ...inRange];
 }
 
+const RANGE_MS: Record<RangeKey, number | null> = {
+  "1D": 86_400_000,
+  "1W": 7 * 86_400_000,
+  "1M": 30 * 86_400_000,
+  "3M": 90 * 86_400_000,
+  "1Y": 365 * 86_400_000,
+  ALL: null,
+};
+
 export default function PortfolioSimulatorPage() {
-  const { portfolio, buy, sell, resetPortfolio, recordEquity } = useAppState();
+  const { portfolio, buy, sell, resetPortfolio, recordEquity, equityHistory } =
+    useAppState();
 
   const [selected, setSelected] = useState(tickerCatalog[0].ticker);
   const [selectedName, setSelectedName] = useState<string>(tickerCatalog[0].name);
@@ -102,7 +104,30 @@ export default function PortfolioSimulatorPage() {
   const [amount, setAmount] = useState("250");
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [range, setRange] = useState<RangeKey>("1M");
-  const [history, setHistory] = useState<Record<string, Bar[]>>({});
+  const [selling, setSelling] = useState<{
+    id: string;
+    ticker: string;
+    shares: number;
+    price: number;
+  } | null>(null);
+  const [sellQty, setSellQty] = useState("");
+
+  function confirmSell() {
+    if (!selling) return;
+    const qty = Number(sellQty);
+    const r = sell(selling.id, qty, selling.price);
+    setFlash(
+      r.ok
+        ? {
+            kind: "ok",
+            msg: `Sold ${qty.toFixed(3)} ${selling.ticker} for ${formatCurrency(qty * selling.price)}`,
+          }
+        : { kind: "err", msg: r.reason ?? "That sell didn't go through." },
+    );
+    if (r.ok) track("trade_executed", { side: "sell", ticker: selling.ticker });
+    setSelling(null);
+    setSellQty("");
+  }
 
   // Live symbol search (debounced), trade ANY real US stock or ETF.
   useEffect(() => {
@@ -163,57 +188,24 @@ export default function PortfolioSimulatorPage() {
 
   const round2 = (x: number) => Math.round(x * 100) / 100;
 
-  // Fetch real price history for the selected range whenever it (or the
-  // holdings) change, then reconstruct the portfolio value over time.
-  const posTickers = portfolio.positions.map((p) => p.ticker).join(",");
-  useEffect(() => {
-    if (!posTickers) {
-      setHistory({});
-      return;
-    }
-    let alive = true;
-    fetch(`/api/history?symbols=${encodeURIComponent(posTickers)}&range=${range}`)
-      .then((r) => r.json())
-      .then((d: { history: Record<string, Bar[]> }) => {
-        if (alive) setHistory(d.history ?? {});
-      })
-      .catch(() => alive && setHistory({}));
-    return () => {
-      alive = false;
-    };
-  }, [posTickers, range]);
-
-  // Fallback curve from live quotes (yesterday's close → open → now) for when
-  // history hasn't loaded yet.
-  const fallbackSeries = useMemo(() => {
-    const now = Date.now();
-    if (portfolio.positions.length === 0) return [];
-    const valWith = (pick: (q: { prevClose: number; open: number; price: number }) => number) =>
-      portfolio.cash +
-      portfolio.positions.reduce((s, p) => {
-        const q = quotes[p.ticker.toUpperCase()];
-        return s + p.shares * (q ? pick(q) : p.avgCost);
-      }, 0);
-    return [
-      { t: now - 86_400_000, v: round2(valWith((q) => q.prevClose)) },
-      { t: now - 23_400_000, v: round2(valWith((q) => q.open)) },
-      { t: now, v: round2(value) },
-    ];
-  }, [portfolio, quotes, value]);
-
+  // Your real, recorded account value — not a reconstruction of what today's
+  // holdings would have been worth in the past.
   const equitySeries = useMemo(() => {
-    const hs = buildPortfolioSeries(history, portfolio.positions, portfolio.cash);
-    if (hs.length >= 2) {
-      const now = Date.now();
-      if (now - hs[hs.length - 1].t > 60_000) hs.push({ t: now, v: round2(value) });
-      return hs;
-    }
-    return fallbackSeries;
-  }, [history, portfolio, value, fallbackSeries]);
+    const pts = equityInRange(equityHistory, RANGE_MS[range]);
+    if (pts.length === 0) return [];
+    const now = Date.now();
+    const last = pts[pts.length - 1];
+    // Extend to "now" with the current value so the curve reaches the right edge.
+    return now - last.t > 60_000 ? [...pts, { t: now, v: round2(value) }] : pts;
+  }, [equityHistory, range, value]);
 
-  const rangeChange = equitySeries.length >= 2 ? value - equitySeries[0].v : gain.abs;
+  // With fewer than two recorded points there is no history to plot yet. Saying
+  // so is the honest answer; inventing a curve is what the old code did.
+  const hasHistory = equitySeries.length >= 2;
+
+  const rangeChange = hasHistory ? value - equitySeries[0].v : 0;
   const rangePct =
-    equitySeries.length >= 2 && equitySeries[0].v > 0 ? (rangeChange / equitySeries[0].v) * 100 : gain.pct;
+    hasHistory && equitySeries[0].v > 0 ? (rangeChange / equitySeries[0].v) * 100 : 0;
   const rangeSub = RANGES.find((r) => r.key === range)?.sub ?? "";
   const eqColor = rangeChange >= 0 ? "#39f5ac" : "#fb7185";
 
@@ -269,10 +261,31 @@ export default function PortfolioSimulatorPage() {
         }
       />
 
+      {/* This used to read "Prices are real" unconditionally, while the badge's
+          `live` flag was just "is an API key configured". When the provider
+          rate-limited, users traded against hash-derived mock prices under a
+          green "Live" pill and a claim that the prices were real. Both now
+          reflect whether the provider actually answered. */}
+      {!live && (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3 text-sm text-amber-200"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>
+            <strong className="font-semibold">Simulated prices.</strong> Live market
+            data isn&apos;t available right now, so these prices are stand-ins, not
+            real quotes. Gains and losses shown here don&apos;t reflect the real market.
+          </p>
+        </div>
+      )}
+
       <Disclaimer>
         <strong className="font-semibold text-white/60">Educational paper-trading only.</strong>{" "}
-        Prices are real{live ? "" : " (simulated until a market-data key is added)"}, but the
-        money and trades are simulated. No real orders are placed and this is not financial advice.
+        {live
+          ? "Prices are real, but the money and trades are simulated."
+          : "The money and trades are simulated."}{" "}
+        No real orders are placed and this is not financial advice.
       </Disclaimer>
 
       {/* Portfolio value + growth chart (Robinhood-style) */}
@@ -283,10 +296,16 @@ export default function PortfolioSimulatorPage() {
             <p className="font-display text-4xl font-bold tracking-tight text-white">
               {formatCurrency(value, { maximumFractionDigits: 2 })}
             </p>
-            <p className={cn("mt-1 text-sm font-semibold", rangeChange >= 0 ? "text-capital-300" : "text-rose-400")}>
-              {rangeChange >= 0 ? "▲" : "▼"} {formatCurrency(Math.abs(rangeChange))} ({formatPercent(rangePct)})
-              <span className="text-white/40"> {rangeSub}</span>
-            </p>
+            {hasHistory ? (
+              <p className={cn("mt-1 text-sm font-semibold", rangeChange >= 0 ? "text-capital-300" : "text-rose-400")}>
+                {rangeChange >= 0 ? "▲" : "▼"} {formatCurrency(Math.abs(rangeChange))} ({formatPercent(rangePct)})
+                <span className="text-white/40"> {rangeSub}</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-white/40">
+                Not enough history yet for {rangeSub}
+              </p>
+            )}
             <p className="mt-0.5 text-xs text-white/35">
               All-time {gain.abs >= 0 ? "+" : ""}
               {formatCurrency(gain.abs)} ({formatPercent(gain.pct)})
@@ -294,7 +313,7 @@ export default function PortfolioSimulatorPage() {
           </div>
         </div>
         <div className="mt-4 h-40 sm:h-48">
-          {equitySeries.length >= 2 ? (
+          {hasHistory ? (
             <ResponsiveContainer>
               <AreaChart data={equitySeries} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
                 <defs>
@@ -317,9 +336,14 @@ export default function PortfolioSimulatorPage() {
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 text-center">
-              <p className="text-sm text-white/55">Buy a position to start your growth curve.</p>
+              <p className="text-sm text-white/55">
+                {portfolio.positions.length === 0
+                  ? "Buy a position to start your growth curve."
+                  : "Your curve starts building from your first trade."}
+              </p>
               <p className="mt-1 max-w-xs text-xs text-white/35">
-                Once you hold a stock or ETF, this chart tracks your portfolio&apos;s value in real time.
+                This chart plots what your account was actually worth over time, so
+                it only shows periods you were really invested.
               </p>
             </div>
           )}
@@ -420,10 +444,11 @@ export default function PortfolioSimulatorPage() {
                           {formatCurrency(pl.abs)} ({formatPercent(pl.pct)})
                         </p>
                       </div>
+                      {/* Sell used to fire immediately, dump the ENTIRE position,
+                          and return nothing — no confirm, no feedback either way. */}
                       <button
-                        onClick={() => sell(p.id, p.shares, price)}
+                        onClick={() => setSelling({ id: p.id, ticker: p.ticker, shares: p.shares, price })}
                         className="rounded-xl border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:border-rose-500/40 hover:text-rose-300"
-                        title="Sell entire position at the live price"
                       >
                         Sell
                       </button>
@@ -582,12 +607,102 @@ export default function PortfolioSimulatorPage() {
           <Card hover className="border-capital-400/15 bg-capital-400/[0.03]">
             <p className="text-xs font-medium uppercase tracking-wider text-capital-300">Coach tip</p>
             <p className="mt-2 text-sm text-white/70">{rec.text}</p>
-            <Link href={`/learn/${rec.lessonId}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-capital-300 hover:underline">
+            <Link href={`/learn/lesson/${rec.lessonId}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-capital-300 hover:underline">
               Learn this <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </Card>
         </div>
       </div>
+
+      {selling && (
+        <SellDialog
+          position={selling}
+          qty={sellQty}
+          onQty={setSellQty}
+          onCancel={() => {
+            setSelling(null);
+            setSellQty("");
+          }}
+          onConfirm={confirmSell}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Confirms a sell and supports selling PART of a position, not just all of it. */
+function SellDialog({
+  position,
+  qty,
+  onQty,
+  onCancel,
+  onConfirm,
+}: {
+  position: { ticker: string; shares: number; price: number };
+  qty: string;
+  onQty: (v: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const n = Number(qty);
+  const valid = Number.isFinite(n) && n > 0 && n <= position.shares + 1e-9;
+  const proceeds = valid ? n * position.price : 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Sell ${position.ticker}`}
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-ink-950/80 p-5 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-display text-lg font-bold text-white">
+          Sell {position.ticker}
+        </h2>
+        <p className="mt-1 text-sm text-white/50">
+          You hold {position.shares.toFixed(3)} shares at{" "}
+          {formatCurrency(position.price, { maximumFractionDigits: 2 })} each.
+        </p>
+
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-white/50">
+            Shares to sell
+          </span>
+          <input
+            autoFocus
+            inputMode="decimal"
+            value={qty}
+            onChange={(e) => onQty(e.target.value)}
+            placeholder={position.shares.toFixed(3)}
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-capital-400/40 focus:outline-none"
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={() => onQty(String(position.shares))}
+          className="mt-2 text-xs font-semibold text-capital-300 hover:underline"
+        >
+          Sell all {position.shares.toFixed(3)}
+        </button>
+
+        <p className="mt-3 text-sm text-white/60">
+          Proceeds:{" "}
+          <span className="font-semibold text-white">
+            {formatCurrency(proceeds, { maximumFractionDigits: 2 })}
+          </span>
+        </p>
+
+        <div className="mt-5 flex gap-2.5">
+          <Button variant="outline" className="flex-1" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button className="flex-1" disabled={!valid} onClick={onConfirm}>
+            Confirm sell
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

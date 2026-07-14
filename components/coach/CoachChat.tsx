@@ -355,7 +355,7 @@ function CoachBubble({ message, onSave }: { message: ChatMessage; onSave: () => 
                   </p>
                 </div>
                 <Button
-                  href={`/learn/${message.recommendedLessonId}`}
+                  href={`/learn/lesson/${message.recommendedLessonId}`}
                   size="sm"
                   variant="secondary"
                   className="shrink-0"

@@ -14,6 +14,7 @@ import type {
   AssetType,
   CoachNote,
   Certificate,
+  ChallengeStatus,
   Course,
   DailyQuest,
   Interest,
@@ -35,8 +36,8 @@ import { joinClub as remoteJoinClub, leaveClub as remoteLeaveClub } from "@/lib/
 import { currentUser as demoPersona } from "@/lib/data/people";
 import { posts as seedPosts } from "@/lib/data/posts";
 import { defaultPortfolio } from "@/lib/data/portfolio";
-import { lessonById, lessons } from "@/lib/data/lessons";
 import { badgeById } from "@/lib/data/badges";
+import { challenges } from "@/lib/data/challenges";
 import {
   courseById,
   courseLessonById,
@@ -47,6 +48,7 @@ import {
 import { skills } from "@/lib/data/skills";
 import { dailyQuestsFor } from "@/lib/data/quests";
 import {
+  challengeProgressPct,
   computeBadges,
   computeSkills,
   courseProgress,
@@ -69,20 +71,69 @@ import {
 export const MAX_HEARTS = 5;
 
 // A single honest welcome notification (no fabricated social/rank events).
+// The href used to be "/learn/what-is-investing", a lesson in the retired
+// curriculum, so the very first CTA a new user got dropped them out of the
+// course path. It points at the path itself now.
 function welcomeNote(createdAt: string): Notification {
   return {
     id: "welcome",
     type: "lesson",
     title: "Welcome to Campus Capital 🎉",
-    body: "Start with “What is investing, really?” to earn your first badge.",
+    body: "Start with Money Basics to earn your first badge.",
     createdAt,
     read: false,
-    href: "/learn/what-is-investing",
+    href: "/learn",
   };
 }
 
 function freshDailyXp(date = dateKey()): DailyXp {
   return { date, xp: 0, correct: 0, lessons: 0, minutes: 0 };
+}
+
+/**
+ * Pays out any challenge whose rule is now satisfied and that hasn't been paid
+ * before. Pure and idempotent — safe to run on every reconcile.
+ *
+ * `profile.completedChallenges` is the durable ledger (it rides along on the
+ * profile row), so a user cannot be paid twice by opening the app on a second
+ * device.
+ */
+function applyChallengeRewards(s: Snapshot): Snapshot {
+  const paid = new Set(s.profile.completedChallenges ?? []);
+  const newlyDone = challenges.filter(
+    (c) =>
+      !paid.has(c.id) &&
+      challengeProgressPct(c.rule, s.profile, s.portfolio.positions) >= 100,
+  );
+  if (newlyDone.length === 0) return s;
+
+  const xpGained = newlyDone.reduce((sum, c) => sum + c.xp, 0);
+  const notes: Notification[] = newlyDone.map((c) => ({
+    id: `challenge-${c.id}`,
+    type: "challenge",
+    title: `Challenge complete: ${c.title}`,
+    body: `You earned +${c.xp} XP${c.badgeId ? ` and the ${badgeById(c.badgeId)?.name ?? c.badgeId} badge` : ""}.`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    href: "/challenges",
+  }));
+
+  return {
+    ...s,
+    profile: {
+      ...s.profile,
+      xp: s.profile.xp + xpGained,
+      completedChallenges: [...Array.from(paid), ...newlyDone.map((c) => c.id)],
+      // Challenge badges are awarded through the same recompute as every other
+      // badge (see computeBadges), so there's nothing to add here — the rules
+      // that gate them are satisfied by the same state that completed this.
+    },
+    dailyXp: { ...s.dailyXp, xp: s.dailyXp.xp + xpGained },
+    notifications: [
+      ...notes.filter((n) => allowsNotification(s.notifyPrefs, n.type)),
+      ...s.notifications,
+    ],
+  };
 }
 
 /** Maps each notification kind onto the Settings switch that governs it. */
@@ -116,6 +167,7 @@ function freshDemoProfile(): Profile {
     following: 0,
     badges: [],
     completedLessons: [],
+    completedChallenges: [],
     hearts: MAX_HEARTS,
     maxHearts: MAX_HEARTS,
     skills: [],
@@ -285,7 +337,8 @@ interface AppStateValue {
   portfolio: Portfolio;
   notifications: Notification[];
   unreadCount: number;
-  challengeProgress: Record<string, number>;
+  /** Every challenge with the user's REAL progress resolved. */
+  challengeStatuses: () => ChallengeStatus[];
   dailyXp: DailyXp;
   coachNotes: CoachNote[];
   savedProjects: SavedProject[];
@@ -351,7 +404,7 @@ interface AppStateValue {
   // portfolio (paper trading)
   equityHistory: EquityPoint[];
   buy: (order: BuyOrder) => { ok: boolean; reason?: string };
-  sell: (positionId: string, shares: number, price: number) => void;
+  sell: (positionId: string, shares: number, price: number) => { ok: boolean; reason?: string };
   resetPortfolio: () => void;
   recordEquity: (value: number) => void;
 
@@ -363,7 +416,6 @@ interface AppStateValue {
   // misc
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  setChallengeProgress: (id: string, value: number) => void;
   updateProfile: (patch: Partial<Profile>) => void;
 }
 
@@ -378,7 +430,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // Recompute derived progression fields (level, badges, skills) after a
   // state change, and apply the daily rollover (hearts refill, daily resets).
   const reconcile = useCallback((s: Snapshot): Snapshot => {
-    const rolled = rolloverDay(s, Date.now());
+    const rolled = applyChallengeRewards(rolloverDay(s, Date.now()));
     const level = levelForXp(rolled.profile.xp);
     const badges = computeBadges(rolled.profile, rolled.portfolio.positions, {
       dailyCorrect: rolled.dailyXp.correct,
@@ -479,6 +531,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         following: 0,
         badges: [],
         completedLessons: [],
+        completedChallenges: [],
         // Club membership is earned after verification, never granted at signup.
         clubs: [],
         joinedAt: new Date().toISOString(),
@@ -568,18 +621,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const isLessonUnlocked = useCallback(
     (lessonId: string) => {
-      const done = new Set(snap.profile.completedLessons);
       const courseLesson = courseLessonById(lessonId);
-      if (courseLesson) {
-        const flat = lessonsForCourse(courseLesson.courseId);
-        const i = flat.findIndex((l) => l.id === lessonId);
-        if (i === 0) return true; // first lesson of its course
-        return i > 0 && done.has(flat[i - 1].id);
-      }
-      // Legacy path lessons: sequential unlock in authored order.
-      const li = lessons.findIndex((l) => l.id === lessonId);
-      if (li === 0) return true;
-      return li > 0 && done.has(lessons[li - 1].id);
+      if (!courseLesson) return false;
+      const done = new Set(snap.profile.completedLessons);
+      const flat = lessonsForCourse(courseLesson.courseId);
+      const i = flat.findIndex((l) => l.id === lessonId);
+      if (i === 0) return true; // first lesson of its course
+      return i > 0 && done.has(flat[i - 1].id);
     },
     [snap.profile.completedLessons],
   );
@@ -599,15 +647,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // ── Learning: completion ───────────────────────────────────────────────────
   const completeLesson = useCallback(
     (lessonId: string): LessonReward => {
-      const legacy = lessonById(lessonId);
+      // There used to be a second, legacy curriculum here whose lessons awarded
+      // XP and streak but cost no hearts and advanced no course or skill — a
+      // heart-free XP farm reachable from search, ⌘K, Coach and the welcome
+      // notification. It's gone; the course engine is the only lesson source.
       const courseLesson = courseLessonById(lessonId);
-      if (!legacy && !courseLesson)
+      if (!courseLesson)
         return { xpGained: 0, leveledUp: false, newBadgeIds: [], alreadyDone: true };
 
-      const xpBonus = courseLesson?.xp ?? legacy?.xp ?? 0;
-      const minutesSpent =
-        legacy?.minutes ??
-        Math.max(3, Math.round((courseLesson?.cards.length ?? 5) * 0.8));
+      const xpBonus = courseLesson.xp ?? 0;
+      const minutesSpent = Math.max(3, Math.round(courseLesson.cards.length * 0.8));
 
       let reward: LessonReward = {
         xpGained: 0,
@@ -1032,10 +1081,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sell = useCallback(
-    (positionId: string, shares: number, price: number) => {
+    (positionId: string, shares: number, price: number): { ok: boolean; reason?: string } => {
+      let result: { ok: boolean; reason?: string } = { ok: true };
       patch((s) => {
         const pos = s.portfolio.positions.find((p) => p.id === positionId);
-        if (!pos || shares <= 0) return s;
+        if (!pos) {
+          result = { ok: false, reason: "That position no longer exists." };
+          return s;
+        }
+        if (shares <= 0) {
+          result = { ok: false, reason: "Enter how many shares to sell." };
+          return s;
+        }
+        // There was no price guard here, only a shares check. `priceOf` falls
+        // back to avgCost, and avg_cost defaults to 0 in the schema — so a
+        // position whose price resolved to 0 was liquidated for $0 of proceeds.
+        if (!Number.isFinite(price) || price <= 0) {
+          result = { ok: false, reason: "No price available for this ticker right now." };
+          return s;
+        }
         const qty = Math.min(shares, pos.shares);
         const proceeds = qty * price;
         const remaining = pos.shares - qty;
@@ -1050,6 +1114,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           portfolio: { ...s.portfolio, cash: s.portfolio.cash + proceeds, positions },
         });
       });
+      return result;
     },
     [patch, reconcile],
   );
@@ -1091,11 +1156,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     () => patch((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) })),
     [patch],
   );
-  const setChallengeProgress = useCallback(
-    (id: string, value: number) =>
-      patch((s) => ({ ...s, challengeProgress: { ...s.challengeProgress, [id]: value } })),
-    [patch],
-  );
+  // `setChallengeProgress` used to live here and was never called from anywhere,
+  // so `challengeProgress` stayed {} for every user and no challenge ever moved.
+  // Progress is now derived from real state and rewards are paid in reconcile().
+  const challengeStatuses = useCallback((): ChallengeStatus[] => {
+    const paid = new Set(snap.profile.completedChallenges ?? []);
+    return challenges.map((challenge) => {
+      const progress = challengeProgressPct(
+        challenge.rule,
+        snap.profile,
+        snap.portfolio.positions,
+      );
+      return {
+        challenge,
+        progress,
+        complete: progress >= 100,
+        claimed: paid.has(challenge.id),
+      };
+    });
+  }, [snap.profile, snap.portfolio.positions]);
   const updateProfile = useCallback(
     (p: Partial<Profile>) => patch((s) => reconcile({ ...s, profile: { ...s.profile, ...p } })),
     [patch, reconcile],
@@ -1109,7 +1188,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     portfolio: snap.portfolio,
     notifications: snap.notifications,
     unreadCount: snap.notifications.filter((n) => !n.read).length,
-    challengeProgress: snap.challengeProgress,
+    challengeStatuses,
     dailyXp: snap.dailyXp,
     coachNotes: snap.coachNotes,
     savedProjects: snap.savedProjects,
@@ -1153,7 +1232,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     recordEquity,
     markNotificationRead,
     markAllNotificationsRead,
-    setChallengeProgress,
     updateProfile,
   };
 

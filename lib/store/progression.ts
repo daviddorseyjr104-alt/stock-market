@@ -1,5 +1,4 @@
-import type { Position, Profile } from "@/lib/types";
-import { lessons } from "@/lib/data/lessons";
+import type { ChallengeRule, Position, Profile } from "@/lib/types";
 import { courses, lessonsForCourse } from "@/lib/data/courses";
 import { skills } from "@/lib/data/skills";
 
@@ -13,6 +12,40 @@ export function levelForXp(xp: number): number {
 export function xpProgressInLevel(xp: number): { inLevel: number; pct: number } {
   const inLevel = xp % XP_PER_LEVEL;
   return { inLevel, pct: (inLevel / XP_PER_LEVEL) * 100 };
+}
+
+// ── Challenges ──────────────────────────────────────────────────────────────
+/**
+ * Resolves a challenge rule against real state. Returns 0-100.
+ *
+ * Challenge progress used to come from `challengeProgress`, a map that nothing
+ * in the app ever wrote to, so four challenges were pinned at 0% forever and
+ * none of them ever paid out the XP or badge they advertised.
+ */
+export function challengeProgressPct(
+  rule: ChallengeRule,
+  profile: Profile,
+  positions: Position[],
+): number {
+  const pct = (done: number, target: number) =>
+    target <= 0 ? 100 : Math.min(100, Math.round((done / target) * 100));
+
+  switch (rule.kind) {
+    case "lessons": {
+      const done = new Set(profile.completedLessons);
+      return pct(rule.ids.filter((id) => done.has(id)).length, rule.ids.length);
+    }
+    case "holdings": {
+      const matching = positions.filter(
+        (p) => !rule.assetTypes || rule.assetTypes.includes(p.assetType),
+      );
+      return pct(matching.length, rule.count);
+    }
+    case "assetTypes":
+      return pct(new Set(positions.map((p) => p.assetType)).size, rule.count);
+    case "streak":
+      return pct(profile.streak, rule.days);
+  }
 }
 
 /** Local date key (YYYY-MM-DD) for streak comparisons. */
@@ -116,16 +149,35 @@ export function computeBadges(
   const done = new Set(profile.completedLessons);
   const earned = new Set<string>();
 
-  // ── Legacy lesson-track badges (unchanged) ────────────────────────────────
+  // ── Topic badges ──────────────────────────────────────────────────────────
+  // Each of these was gated ONLY on an id from the old curriculum, which has
+  // since been removed. That made five badges permanently unearnable for anyone
+  // on the course path, i.e. everyone.
+  //
+  // Each rule now accepts the course lesson OR the retired legacy id. The legacy
+  // arm is a grandfather clause: badges recompute from scratch on every load and
+  // are not sticky, so dropping it would silently revoke badges from users who
+  // earned them before the old lessons were removed.
+  const any = (...ids: string[]) => ids.some((id) => done.has(id));
+  const all = (...ids: string[]) => ids.every((id) => done.has(id));
+
   if (done.size >= 1) earned.add("first-lesson");
-  if (done.has("etfs") && done.has("index-funds")) earned.add("etf-explorer");
-  if (done.has("compound-interest")) earned.add("compound-king");
-  if (done.has("budgeting-college")) earned.add("budget-builder");
-  if (done.has("roth-ira")) earned.add("roth-rookie");
-  if (done.has("risk-explained") && done.has("portfolio-allocation"))
+  // ETFs, Index Funds & Mutual Funds
+  if (any("investing-u1-l2") || all("etfs", "index-funds")) earned.add("etf-explorer");
+  // Compound Growth: Time Is Your Superpower
+  if (any("investing-u3-l1", "compound-interest")) earned.add("compound-king");
+  // Unit 1 Challenge: Build a Budget
+  if (any("money-basics-u1-l4", "budgeting-college")) earned.add("budget-builder");
+  // The Roth IRA for Students
+  if (any("investing-u3-l2", "roth-ira")) earned.add("roth-rookie");
+  // Diversification + Asset Allocation
+  if (all("investing-u2-l1", "investing-u2-l2") || all("risk-explained", "portfolio-allocation"))
     earned.add("risk-manager");
+
   if (profile.streak >= 7) earned.add("streak-7");
   if (profile.streak >= 30) earned.add("streak-30");
+  // campusRank was hardcoded to 0 and never assigned anywhere, so this badge was
+  // structurally unreachable. The leaderboard now writes the real rank back.
   if (profile.campusRank > 0 && profile.campusRank <= 10) earned.add("campus-top-10");
 
   const assetTypes = new Set(positions.map((p) => p.assetType));
@@ -168,5 +220,3 @@ export function computeBadges(
   return Array.from(earned);
 }
 
-export const TOTAL_LESSON_XP = lessons.reduce((s, l) => s + l.xp, 0);
-export const TOTAL_LESSONS = lessons.length;

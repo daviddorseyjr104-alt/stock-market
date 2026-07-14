@@ -5,6 +5,7 @@ import {
   Users,
   Boxes,
   Trophy,
+  Target,
   Bot,
   User,
   Settings,
@@ -19,9 +20,12 @@ export interface NavItem {
 }
 
 // Desktop sidebar, every primary surface of the app.
+// Challenges was missing entirely — its only in-repo link was the *marketing*
+// footer, which a signed-in user never sees, so the page was unreachable.
 export const primaryNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Learn", href: "/learn", icon: BookOpen },
+  { label: "Challenges", href: "/challenges", icon: Target },
   { label: "Simulator", href: "/simulator", icon: TrendingUp },
   { label: "Campus", href: "/campus", icon: Users },
   { label: "Clubs", href: "/clubs", icon: Boxes },

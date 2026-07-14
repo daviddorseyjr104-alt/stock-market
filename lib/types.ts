@@ -76,6 +76,8 @@ export interface Profile {
   following: number;
   badges: string[]; // badge ids
   completedLessons: string[]; // lesson ids
+  /** Challenges already PAID OUT. Durable, so a reward can't be claimed twice. */
+  completedChallenges?: string[];
   clubs: string[]; // club ids
   joinedAt: string;
   /** Current hearts (lives) for lesson play. Defaults to 5. */
@@ -178,6 +180,18 @@ export interface Club {
   featured?: boolean;
 }
 
+/**
+ * What a challenge actually checks, evaluated against real persisted state.
+ * A challenge with no verifiable rule has no business promising a reward.
+ */
+export type ChallengeRule =
+  | { kind: "lessons"; ids: string[] }
+  /** N positions whose assetType is in the given list (any type if omitted). */
+  | { kind: "holdings"; assetTypes?: AssetType[]; count: number }
+  /** N *distinct* asset types held at once. */
+  | { kind: "assetTypes"; count: number }
+  | { kind: "streak"; days: number };
+
 export interface Challenge {
   id: string;
   title: string;
@@ -186,10 +200,19 @@ export interface Challenge {
   steps: string[];
   xp: number;
   badgeId?: string;
-  deadlineDays: number;
-  progress: number; // 0-100
+  rule: ChallengeRule;
   category: string;
   icon: string;
+}
+
+/** A challenge with the signed-in user's real progress resolved. */
+export interface ChallengeStatus {
+  challenge: Challenge;
+  /** 0-100, derived from the rule. */
+  progress: number;
+  complete: boolean;
+  /** True once the XP/badge has actually been paid out. */
+  claimed: boolean;
 }
 
 export type AssetType = "Stock" | "ETF" | "Index Fund" | "Bond" | "Cash";

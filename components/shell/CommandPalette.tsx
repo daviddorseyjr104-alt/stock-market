@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, CornerDownLeft } from "lucide-react";
 import { primaryNav, secondaryNav } from "./nav";
-import { lessons } from "@/lib/data/lessons";
+import { allCourseLessons, courseById } from "@/lib/data/courses";
 import { schools } from "@/lib/data/schools";
 import { clubs } from "@/lib/data/clubs";
 import { cn } from "@/lib/utils";
@@ -34,10 +34,12 @@ export function CommandPalette({
       href: n.href,
       group: "Navigation",
     }));
-    const ls = lessons.map((l) => ({
+    // This indexed the retired 23-lesson curriculum, so ⌘K surfaced only dead
+    // lessons and the 96 real ones were invisible to it.
+    const ls = allCourseLessons.map((l) => ({
       label: l.title,
-      sub: `Lesson · ${l.difficulty} · +${l.xp} XP`,
-      href: `/learn/${l.id}`,
+      sub: `${courseById(l.courseId)?.title ?? "Lesson"} · +${l.xp} XP`,
+      href: `/learn/lesson/${l.id}`,
       group: "Lessons",
     }));
     const sc = schools.map((s) => ({

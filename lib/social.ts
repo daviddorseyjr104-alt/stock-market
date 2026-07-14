@@ -53,6 +53,7 @@ export interface LeaderProfile {
   id: string;
   fullName: string;
   avatarColor: string;
+  avatarUrl?: string;
   xp: number;
   streak: number;
   schoolId: string | null;
@@ -286,7 +287,7 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
   try {
     const { data } = await sb
       .from("profiles")
-      .select("id, full_name, avatar_color, xp, streak, school_id, major")
+      .select("id, full_name, avatar_color, avatar_url, xp, streak, school_id, major")
       .order("xp", { ascending: false })
       .limit(100);
     return (data ?? []).map(
@@ -294,6 +295,7 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
         id: string;
         full_name: string;
         avatar_color: string | null;
+        avatar_url: string | null;
         xp: number | null;
         streak: number | null;
         school_id: string | null;
@@ -302,6 +304,7 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
         id: p.id,
         fullName: p.full_name ?? "Student",
         avatarColor: p.avatar_color ?? "from-capital-400 to-violet-500",
+        avatarUrl: p.avatar_url ?? undefined,
         xp: p.xp ?? 0,
         streak: p.streak ?? 0,
         schoolId: p.school_id,
@@ -315,6 +318,77 @@ export async function getStudentLeaders(): Promise<LeaderProfile[]> {
 
 export const schoolShort = (id: string | null) =>
   id ? schoolById(id)?.shortName ?? "" : "";
+
+// ── Follows ─────────────────────────────────────────────────────────────────
+// The `follows` table and its RLS policies existed from the start and were
+// never written to once: there was no follow mutator anywhere in the codebase,
+// and the Follow button was a local useState that reset on unmount. That also
+// made the feed's "Following" filter permanently empty, since the array it
+// filtered on always started as []. These are the missing mutators.
+
+/** Ids the signed-in user follows. The source of truth for the Following feed. */
+export async function getFollowing(): Promise<string[]> {
+  if (!socialIsReal) return [];
+  const sb = createClient();
+  if (!sb) return [];
+  try {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (!user) return [];
+    const { data, error } = await sb
+      .from("follows")
+      .select("following_id")
+      .eq("follower_id", user.id);
+    if (error || !data) return [];
+    return data.map((r: { following_id: string }) => r.following_id);
+  } catch {
+    return [];
+  }
+}
+
+/** Returns an error message on failure, or null on success. */
+export async function followUser(targetId: string): Promise<string | null> {
+  if (!socialIsReal) return null;
+  const sb = createClient();
+  if (!sb) return null;
+  try {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (!user) return "Sign in to follow students.";
+    if (user.id === targetId) return "You can't follow yourself.";
+    const { error } = await sb
+      .from("follows")
+      .upsert(
+        { follower_id: user.id, following_id: targetId },
+        { onConflict: "follower_id,following_id" },
+      );
+    return error ? error.message : null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Could not follow.";
+  }
+}
+
+export async function unfollowUser(targetId: string): Promise<string | null> {
+  if (!socialIsReal) return null;
+  const sb = createClient();
+  if (!sb) return null;
+  try {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (!user) return "Sign in first.";
+    const { error } = await sb
+      .from("follows")
+      .delete()
+      .eq("follower_id", user.id)
+      .eq("following_id", targetId);
+    return error ? error.message : null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Could not unfollow.";
+  }
+}
 
 /**
  * Real follower / following counts for the signed-in user (from the follows

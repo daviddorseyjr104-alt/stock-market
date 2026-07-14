@@ -190,6 +190,8 @@ class SupabaseRepository implements Repository {
         gradYear: profile.grad_year ?? snap.profile.gradYear,
         bio: profile.bio ?? snap.profile.bio,
         avatarUrl: profile.avatar_url ?? snap.profile.avatarUrl,
+        completedChallenges:
+          profile.completed_challenges ?? snap.profile.completedChallenges ?? [],
         level: profile.level ?? snap.profile.level,
         xp: profile.xp ?? snap.profile.xp,
         streak: profile.streak ?? snap.profile.streak,
@@ -267,6 +269,7 @@ class SupabaseRepository implements Repository {
       campus_rank: p.campusRank,
       national_rank: p.nationalRank,
       avatar_url: p.avatarUrl ?? null,
+      completed_challenges: p.completedChallenges ?? [],
       updated_at: new Date().toISOString(),
     });
 
@@ -288,8 +291,8 @@ class SupabaseRepository implements Repository {
       );
     }
 
-    // Portfolio account + holdings (replace-on-save for simplicity).
-    const { data: account } = await supabase
+    // Portfolio account + holdings.
+    const { data: account, error: accountError } = await supabase
       .from("portfolio_simulator_accounts")
       .upsert(
         {
@@ -303,22 +306,56 @@ class SupabaseRepository implements Repository {
       .select("id")
       .maybeSingle();
 
-    if (account) {
-      await supabase.from("portfolio_holdings").delete().eq("account_id", account.id);
-      if (snap.portfolio.positions.length) {
-        await supabase.from("portfolio_holdings").insert(
-          snap.portfolio.positions.map((h) => ({
-            account_id: account.id,
-            ticker: h.ticker,
-            name: h.name,
-            asset_type: h.assetType,
-            shares: h.shares,
-            avg_cost: h.avgCost,
-            risk: h.risk,
-            lesson_id: h.lessonId ?? null,
-          })),
-        );
+    // This error was discarded, so a failed account upsert meant holdings were
+    // never written at all — silently. The local snapshot still looked right,
+    // and the loss only surfaced on another device.
+    if (accountError || !account) {
+      console.error(
+        "[repository] portfolio account upsert failed:",
+        accountError?.message ?? "no row returned",
+      );
+      return;
+    }
+
+    // Replace-on-save, but insert FIRST and only then delete what's stale.
+    //
+    // This used to DELETE every holding and then INSERT the new set, with both
+    // errors discarded. If the insert failed (an FK violation on lesson_id was
+    // enough), the delete had already committed and the user's entire portfolio
+    // was gone from the database with nothing surfaced. Writing first means a
+    // failed insert leaves the previous rows intact.
+    const stamp = new Date().toISOString();
+    if (snap.portfolio.positions.length) {
+      const { error: insertError } = await supabase.from("portfolio_holdings").insert(
+        snap.portfolio.positions.map((h) => ({
+          account_id: account.id,
+          ticker: h.ticker,
+          name: h.name,
+          asset_type: h.assetType,
+          shares: h.shares,
+          avg_cost: h.avgCost,
+          risk: h.risk,
+          lesson_id: h.lessonId ?? null,
+          updated_at: stamp,
+        })),
+      );
+      if (insertError) {
+        console.error("[repository] holdings insert failed:", insertError.message);
+        return; // Leave the previous rows in place rather than destroy them.
       }
+    }
+
+    // Drop only the rows this save superseded. Concurrent saves (the store
+    // debounces at 350ms, so two quick trades can overlap) can no longer
+    // interleave into duplicate tickers, because each save deletes exactly the
+    // generation that preceded it.
+    const { error: deleteError } = await supabase
+      .from("portfolio_holdings")
+      .delete()
+      .eq("account_id", account.id)
+      .lt("updated_at", stamp);
+    if (deleteError) {
+      console.error("[repository] stale holdings cleanup failed:", deleteError.message);
     }
   }
 

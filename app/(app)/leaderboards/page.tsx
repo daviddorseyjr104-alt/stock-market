@@ -43,7 +43,7 @@ interface Board {
 const PODIUM_ORDER = [2, 1, 3]; // visual left-to-right: 2nd, 1st, 3rd
 
 export default function LeaderboardsPage() {
-  const { profile, hydrated } = useAppState();
+  const { profile, hydrated, updateProfile } = useAppState();
   const [active, setActive] = useState<BoardKey>("campus");
   const [students, setStudents] = useState<LeaderProfile[]>([]);
   const [clubStats, setClubStats] = useState<Record<string, number>>({});
@@ -169,15 +169,17 @@ export default function LeaderboardsPage() {
     [campusData],
   );
 
-  // Club standings: real database memberships plus your own (real) joins.
-  // Clubs nobody has joined yet aren't ranked.
+  // Club standings, straight from `club_members`.
+  //
+  // This used to add `+1` for each club you'd joined, on the assumption your own
+  // membership was tracked only locally. It isn't — joinClub() writes to
+  // club_members, which is exactly what getClubStats() counts — so you were
+  // counted twice, and a solo member saw "2 members" on a board whose own copy
+  // promises "every member is a real student".
   const clubRows: LeaderRow[] = useMemo(
     () =>
       clubs
-        .map((c) => ({
-          c,
-          members: (clubStats[c.id] ?? 0) + (profile.clubs.includes(c.id) ? 1 : 0),
-        }))
+        .map((c) => ({ c, members: clubStats[c.id] ?? 0 }))
         .filter((x) => x.members > 0)
         .sort((a, b) => b.members - a.members)
         .map((x, i) => ({
@@ -210,6 +212,23 @@ export default function LeaderboardsPage() {
   const mySchool = schoolById(profile.schoolId);
   const myRank = campusData.findIndex((d) => d.highlight) + 1;
   const myStudentRank = studentRows.find((r) => r.highlight)?.rank;
+
+  // Your rank *within your own campus*. `profile.campusRank` was hardcoded to 0
+  // and never assigned anywhere, which made the "campus-top-10" badge
+  // structurally unearnable. Write the real value back so it can be earned.
+  const myCampusRank = useMemo(() => {
+    if (!profile.schoolId) return 0;
+    const sameSchool = [...roster]
+      .filter((p) => p.schoolId === profile.schoolId)
+      .sort((a, b) => b.xp - a.xp);
+    const i = sameSchool.findIndex((p) => p.id === profile.id);
+    return i < 0 ? 0 : i + 1;
+  }, [roster, profile.id, profile.schoolId]);
+
+  useEffect(() => {
+    if (!hydrated || myCampusRank === profile.campusRank) return;
+    updateProfile({ campusRank: myCampusRank });
+  }, [hydrated, myCampusRank, profile.campusRank, updateProfile]);
 
   // Emoji lookups so podium cards can carry real identity (school/club marks).
   const emojiFor = (row: LeaderRow): string | undefined => {
@@ -371,7 +390,7 @@ export default function LeaderboardsPage() {
             <StandingStat
               icon={<Trophy className="h-3.5 w-3.5" />}
               label="Student rank"
-              value={myStudentRank ? `#${myStudentRank}` : ", "}
+              value={myStudentRank ? `#${myStudentRank}` : "—"}
             />
           </motion.div>
         </div>

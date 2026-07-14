@@ -26,6 +26,9 @@ import { useAppState } from "@/lib/store";
 import {
   getFeed,
   getStudentLeaders,
+  getFollowing,
+  followUser,
+  unfollowUser,
   createPost,
   toggleLike,
   addComment,
@@ -192,6 +195,7 @@ function CampusFeed() {
   const [loading, setLoading] = useState(true);
   const [suggestions, setSuggestions] = useState<LeaderProfile[]>([]);
   const [following, setFollowing] = useState<string[]>([]);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   const me: FeedAuthor = useMemo(
     () => ({ id: profile.id, name: profile.fullName, avatarColor: profile.avatarColor, avatarUrl: profile.avatarUrl, schoolId: profile.schoolId }),
@@ -206,17 +210,38 @@ function CampusFeed() {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([getFeed(), getStudentLeaders()]).then(([posts, leaders]) => {
-      if (!alive) return;
-      setFeed(posts);
-      // Only suggest real students, never seeded demo people.
-      setSuggestions(socialIsReal ? leaders.filter((p) => p.id !== profile.id).slice(0, 4) : []);
-      setLoading(false);
-    });
+    // `following` used to be useState([]) that nothing ever hydrated, so the
+    // Follow button reset on every unmount and the Following tab could never
+    // show anything. It's now loaded from (and written to) the follows table.
+    Promise.all([getFeed(), getStudentLeaders(), getFollowing()]).then(
+      ([posts, leaders, followed]) => {
+        if (!alive) return;
+        setFeed(posts);
+        setFollowing(followed);
+        // Only suggest real students, never seeded demo people.
+        setSuggestions(socialIsReal ? leaders.filter((p) => p.id !== profile.id).slice(0, 4) : []);
+        setLoading(false);
+      },
+    );
     return () => {
       alive = false;
     };
   }, [profile.id]);
+
+  async function handleFollow(targetId: string) {
+    const wasFollowing = following.includes(targetId);
+    setFollowing((prev) =>
+      wasFollowing ? prev.filter((id) => id !== targetId) : [...prev, targetId],
+    );
+    const err = wasFollowing ? await unfollowUser(targetId) : await followUser(targetId);
+    if (err) {
+      // Roll back rather than leave a button showing a state the server rejected.
+      setFollowing((prev) =>
+        wasFollowing ? [...prev, targetId] : prev.filter((id) => id !== targetId),
+      );
+      setFollowError(err);
+    }
+  }
 
   // `clubId` was never plumbed through here, so every post saved with
   // club_id = NULL and club feeds (which filter on it) were empty by
@@ -339,7 +364,12 @@ function CampusFeed() {
                   const isFollowing = following.includes(person.id);
                   return (
                     <li key={person.id} className="flex items-center gap-3">
-                      <Avatar name={person.fullName} gradient={person.avatarColor} size="sm" />
+                      <Avatar
+                        name={person.fullName}
+                        gradient={person.avatarColor}
+                        src={person.avatarUrl}
+                        size="sm"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-white">{person.fullName}</p>
                         <p className="truncate text-xs text-white/45">
@@ -350,11 +380,7 @@ function CampusFeed() {
                       <Button
                         size="sm"
                         variant={isFollowing ? "secondary" : "outline"}
-                        onClick={() =>
-                          setFollowing((prev) =>
-                            isFollowing ? prev.filter((id) => id !== person.id) : [...prev, person.id],
-                          )
-                        }
+                        onClick={() => void handleFollow(person.id)}
                       >
                         {isFollowing ? "Following" : "Follow"}
                       </Button>
@@ -362,6 +388,11 @@ function CampusFeed() {
                   );
                 })}
               </ul>
+              {followError && (
+                <p role="alert" className="mt-3 text-xs text-rose-300">
+                  {followError}
+                </p>
+              )}
             </Card>
           )}
 

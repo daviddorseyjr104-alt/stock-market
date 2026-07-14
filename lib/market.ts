@@ -19,9 +19,24 @@ export interface Quote {
 
 const FINNHUB_URL = "https://finnhub.io/api/v1/quote";
 
-// Small in-memory cache (per warm serverless instance) to respect rate limits.
+// In-memory cache (per warm serverless instance) to respect rate limits.
+//
+// The TTL must exceed the client's poll interval (see POLL_MS in use-quotes.ts)
+// or the cache never hits: at TTL 15s against a 30s poll, EVERY refresh went to
+// Finnhub, ~52 calls/min against a 60/min free-tier ceiling. Blowing that
+// ceiling is what made the mock-price fallback fire in normal use.
 const cache = new Map<string, { q: Quote; at: number }>();
-const TTL_MS = 15_000;
+const TTL_MS = 45_000;
+/** Keyed by caller-supplied symbols, so it must not grow without bound. */
+const CACHE_MAX = 500;
+
+function cacheSet(t: string, q: Quote, at: number) {
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(t, { q, at });
+}
 
 /** Deterministic pseudo-random in [0,1) from a string + salt. */
 function hash01(s: string, salt = 0): number {
@@ -81,7 +96,16 @@ async function fetchFinnhub(ticker: string, token: string): Promise<Quote | null
   }
 }
 
-/** Fetch quotes for many tickers. Live when configured, mock otherwise. */
+/**
+ * Fetch quotes for many tickers.
+ *
+ * When a provider call fails (rate limit, outage, unknown symbol) this falls
+ * back to `mockQuote`, whose price is derived from a hash of the ticker string.
+ * That fallback is legitimate — the simulator has to keep working — but the
+ * resulting quote carries `live: false` and callers MUST NOT present it as a
+ * real market price. Teaching students to read a P/L computed from a hash of
+ * the letters "NVDA" is worse than showing them nothing.
+ */
 export async function getQuotes(tickers: string[]): Promise<Record<string, Quote>> {
   const token = process.env.FINNHUB_API_KEY;
   const unique = Array.from(new Set(tickers.map((t) => t.toUpperCase()))).filter(Boolean);
@@ -98,7 +122,7 @@ export async function getQuotes(tickers: string[]): Promise<Record<string, Quote
       let q: Quote | null = null;
       if (token && t !== "CASH") q = await fetchFinnhub(t, token);
       const quote = q ?? mockQuote(t);
-      cache.set(t, { q: quote, at: now });
+      cacheSet(t, quote, now);
       out[t] = quote;
     }),
   );
@@ -106,7 +130,9 @@ export async function getQuotes(tickers: string[]): Promise<Record<string, Quote
   return out;
 }
 
-export const isMarketLive = () => Boolean(process.env.FINNHUB_API_KEY);
+/** Whether a provider is *configured*. Says nothing about whether it answered —
+ *  read `Quote.live` per quote for that. */
+export const isMarketConfigured = () => Boolean(process.env.FINNHUB_API_KEY);
 
 // ── Symbol search ───────────────────────────────────────────────────────────
 export interface SymbolResult {
